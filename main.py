@@ -1,9 +1,6 @@
 import torch
-from kvret import KvretDataset
-from MTSIBert import MTSIBert
+from model import (KvretDataset, KvretConfig, FriendlyBert, MTSIBert)
 from torch.utils.data import DataLoader
-from MTSIBertConfig import KvretConfig
-from friendlyBert import FriendlyBert
 import pdb
 
 
