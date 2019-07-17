@@ -23,7 +23,7 @@ def main():
     badapter_val = FriendlyBert(validation_set, tokenizer, KvretConfig._KVRET_MAX_BERT_TOKEN_PER_VAL_SENTENCE + 1)
 
     # Parameters
-    params = {'batch_size': 2,
+    params = {'batch_size': 4,
             'shuffle': False,
             'num_workers': 0}
 
@@ -38,7 +38,8 @@ def main():
 
     for epoch in range(_N_EPOCHS):
        for local_batch, local_labels in training_generator:
-           None
+           #None
+           pdb.set_trace()
             
 
 

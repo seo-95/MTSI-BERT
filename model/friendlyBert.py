@@ -45,17 +45,18 @@ class FriendlyBert(Dataset):
 
         # apply padding if needed
         assert tok_text_len <= self._max_sequence_len
-        # TODO
-        if tok_text_len == self._max_sequence_len:
-            print('debug')
 
-        if tok_text_len < self._max_sequence_len - 1:
+        if tok_text_len < self._max_sequence_len:
             tok_text = self.do_padding(tok_text, self._max_sequence_len)
 
         tok_idx = self._tokenizer.convert_tokens_to_ids(tok_text)
 
         # extract the intent
         intent = data[-1]
+        pdb.set_trace()
+        #TODO debug
+        if tok_text_len == self._max_sequence_len - 1:
+            None#print(torch.tensor(tok_idx))
 
         return torch.tensor(tok_idx), intent
 
