@@ -10,25 +10,25 @@ import pdb
 class FriendlyBert(Dataset):
     """
     FriendlyBert is a module implementing the adapter pattern used as intermediary between you program and the dataset when using Bert.
-    It performs all the operations to adapt your dataset input to the one that Bert expects. It does the tokenization, indices transformation etc.
+    It performs all the operations to adapt your dataset input to the one that Bert expects. It does the tokenization, indices transformation, padding etc.
     
     Input:
         dataset : A class extending Dataset containing you dataset
-        pretrained : The string of one of the pretrained modes. For more info look at tokenization.py
-        do_lower_case : Set to False if pretrained is cased. (Default:False)
+        tokenizer : The tokenizer to use
+        max_sequence_len : Tha max length of the sequence (for padding)
 
     Output:
         tok_ids : Indices of each token detected byt the Bert tokenizer
         intent : the intent index for that utterance
 
     Note:
-        The intent should be the last returned elements in the tuple provided by the __getitem__() of the dataset you provide
+        The intent should be the last returned elements in the tuple provided by the __getitem__() of the dataset you provide. The text the first one.
     """
 
-    def __init__(self, dataset, pretrained, do_lower_case = True):
+    def __init__(self, dataset, tokenizer, max_sequence_len):
         self._dataset = dataset
-        self._tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = do_lower_case)
-
+        self._tokenizer = tokenizer
+        self._max_sequence_len = max_sequence_len
 
 
     def __len__(self):
@@ -39,16 +39,48 @@ class FriendlyBert(Dataset):
         data = self._dataset.__getitem__(idx)
 
         # prepare the utterance
-        tok_text = self._tokenizer.tokenize(data[0])
-        tok_idx = self._tokenizer.convert_tokens_to_ids(tok_text)
+        text = data[0]
+        tok_text = self._tokenizer.tokenize(text)
+        tok_text_len = len(tok_text)
 
-        #TODO padding
+        # apply padding if needed
+        assert tok_text_len <= self._max_sequence_len
+        # TODO
+        if tok_text_len == self._max_sequence_len:
+            print('debug')
+
+        if tok_text_len < self._max_sequence_len - 1:
+            tok_text = self.do_padding(tok_text, self._max_sequence_len)
+
+        tok_idx = self._tokenizer.convert_tokens_to_ids(tok_text)
 
         # extract the intent
         intent = data[-1]
 
+        return torch.tensor(tok_idx), intent
 
-        pdb.set_trace()
-        return torch.tensor(tok_idx[0:6]), intent
+
+    def do_padding(self, tok_text, max_len, pad_token = '[PAD]'):
+        """
+        Method for applying padding to the tokenized sentence until reaching max_len
+        
+        Input:
+            tok_text : list containing the tokenized text
+            max_len : the max len to pad
+        """
+
+        diff = max_len - len(tok_text)
+        assert diff >= 0
+
+        res = tok_text
+
+        for count in range(diff):
+            res.append(pad_token)
+
+        return res
+
+
+
+
         
         

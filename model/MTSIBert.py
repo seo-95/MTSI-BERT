@@ -18,7 +18,7 @@ class MTSIBert(nn.Module):
         self.bert_hidden_dim = MTSIBert._BERT_H
         self.gru_hidden_dim = MTSIBert._BERT_H
 
-        # stack architecture
+        # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
         self._gru = nn.GRU(input_size = self.bert_hidden_dim,\
                             hidden_size = self.gru_hidden_dim,\
@@ -40,7 +40,7 @@ class MTSIBert(nn.Module):
 
         # TODO try it with batch_size > 1
         logits = logits.squeeze(1) # now logits has dim 1x3 (batch_size * num_labels)
-        pdb.set_trace()
+        #pdb.set_trace()
         prediction = self._softmax(logits, dim=1)
 
         return prediction, hidden

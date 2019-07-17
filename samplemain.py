@@ -13,7 +13,6 @@ from pytorch_transformers import BertTokenizer, BertModel
 import logging
 # Debugging
 import pdb
-import MTSIBert
 
 #logging.basicConfig(filename='MTSI_log.txt', level=logging.INFO)
 logging.basicConfig(level=logging.DEBUG)
@@ -35,7 +34,7 @@ else:
 # Load pre-trained model tokenizer (vocabulary)
 # from URL: https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-uncased-vocab.txt
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-tokenized_text = tokenizer.tokenize("It's me, Mario!")
+tokenized_text = tokenizer.tokenize("It's me, Mario![PAD]")
 tokenized_text[5] = '[MASK]'
 print(tokenized_text)
 
