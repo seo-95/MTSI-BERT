@@ -29,7 +29,13 @@ class MTSIBert(nn.Module):
         self._softmax = nn.functional.softmax
 
 
-    def forward(self, input, segments, hidden):
+
+    def forward(self, input, mask):
+        
+
+
+    '''
+    def forward(self, input, mask, hidden):
 
         hidden_states, cls_out = self._bert(input, segments)
         # cls_out = batch_sizex768
@@ -44,7 +50,7 @@ class MTSIBert(nn.Module):
         prediction = self._softmax(logits, dim=1)
 
         return prediction, hidden
-
+    '''
 
     def init_hidden(self):
 

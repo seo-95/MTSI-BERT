@@ -19,11 +19,12 @@ def main():
 
     # Bert adapter for dataset
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
-    badapter_train = FriendlyBert(training_set, tokenizer, KvretConfig._KVRET_MAX_BERT_TOKEN_PER_TRAIN_SENTENCE + 1) #TODO pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS)
+    # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS)
+    badapter_train = FriendlyBert(training_set, tokenizer, KvretConfig._KVRET_MAX_BERT_TOKEN_PER_TRAIN_SENTENCE + 1)
     badapter_val = FriendlyBert(validation_set, tokenizer, KvretConfig._KVRET_MAX_BERT_TOKEN_PER_VAL_SENTENCE + 1)
 
     # Parameters
-    params = {'batch_size': 4,
+    params = {'batch_size': 2,
             'shuffle': False,
             'num_workers': 0}
 
@@ -38,8 +39,10 @@ def main():
 
     for epoch in range(_N_EPOCHS):
        for local_batch, local_labels in training_generator:
-           #None
-           pdb.set_trace()
+            #compute the mask
+            attention_mask = [[float(idx>0) for idx in sentence]for sentence in local_batch]
+            torch.tensor(attention_mask)
+            pdb.set_trace()
             
 
 
