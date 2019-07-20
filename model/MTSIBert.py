@@ -12,8 +12,10 @@ class MTSIBert(nn.Module):
     _BERT_SEP_IDX = 102
     _BERT_MASK_IDX = 103
 
-    def __init__(self, num_layers, n_labels, batch_size, pretrained):
+    def __init__(self, num_layers, n_labels, batch_size, pretrained, seed):
         super(MTSIBert, self).__init__()
+
+        torch.manual_seed(seed)
 
         self.num_layers = num_layers
         self.n_labels = n_labels
@@ -22,7 +24,8 @@ class MTSIBert(nn.Module):
         self.gru_hidden_dim = MTSIBert._BERT_H
 
         # init dialog status
-        self._curr_dialog = []
+        self._curr_dialog_window = []
+        self._curr_dialog_id = ''
 
         # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
@@ -36,29 +39,39 @@ class MTSIBert(nn.Module):
 
 
     
-    def forward(self, input, labels, hidden, segments):
+    def forward(self, input, hidden, dialogue_ids):
 
         """
         Input:
             input : padded tensor input of dim `B x S`
             labels : tensor of dim `1 x B`
             hidden : the hidden state for the model
-            segment : the segment vector for the input
-            mask : tensor of dim `B x S`
             dialogue_ids : list of string ids of len `B`
         """
-        
+        cls_batch = []
+        for curr_sentence, curr_dialog in zip(input, dialogue_ids):
+            bert_input, segments = self.add_to_dialog_window(curr_sentence)
 
-        hidden_states, cls_out = self._bert(input, segments)
-        # cls_out = batch_sizex768
-        cls_out = cls_out.unsqueeze(0)
+            hidden_states, cls_out = self._bert(input_ids = bert_input.unsqueeze(0),\
+                                                 token_type_ids = segments.unsqueeze(0))
+            # cls_out = batch_sizex768
+            cls_out = cls_out.unsqueeze(0)
+            cls_batch.append(cls_out)
 
-        gru_out, hidden = self._gru(cls_out, hidden)
+            #if end of dialog then flush the window
+            if self._curr_dialog_id and curr_dialog != self._curr_dialog_id:
+                self.dialogue_input_flush()
+                # here re-insert the last sentence (the first of the new dialogue)
+                bert_input, _ = self.add_to_dialog_window(curr_sentence)
+            self._curr_dialog_id = curr_dialog
+
+        # cls_batch is a list of list having len `B`. Interl lists length is 768
+        gru_input = torch.stack(cls_batch).squeeze(1).squeeze(1).unsqueeze(0)
+        # gru input is a tensor of shape `1 x B x 768`
+        gru_out, hidden = self._gru(gru_input, hidden)
         logits = self._classifier(gru_out)
 
-        # TODO try it with batch_size > 1
-        logits = logits.squeeze(1) # now logits has dim 1x3 (batch_size * num_labels)
-        #pdb.set_trace()
+        logits = logits.squeeze(0) # now logits has dim `B x 3` (batch_size * num_labels)
         prediction = self._softmax(logits, dim=1)
 
         return prediction, hidden
@@ -69,21 +82,19 @@ class MTSIBert(nn.Module):
 
 
     def init_hidden(self):
+        # here the second dimension is 1 because we use the hidden sequentially for each dialog window
+        return torch.zeros(self.num_layers, 1, self.gru_hidden_dim)
 
-        return torch.zeros(self.num_layers, self.batch_size, self.gru_hidden_dim)
 
 
-
-    def dialogue_input_generator(self, input, turn):
+    def add_to_dialog_window(self, input):
         """
         This method creates the dialogue input concatenating in the proper way the utterances
 
         Input:
-            input : the set of utterances in the dialogue
-            turn : the actual turn of the dialogue
-
+            input : the set of utterances to append to the dialogue window
         Output:
-            curr_dialog
+            curr_dialog_window
             segment : segment vector for the Bert model (sentence A and B)
 
         ------------------    
@@ -92,39 +103,41 @@ class MTSIBert(nn.Module):
                     concat(U1, U2) [SEP] U3
 
         """
+
         has_more_sentences = False
         # append [CLS] at the beginning
-        if(len(self._curr_dialog) == 0):
-            self._curr_dialog = torch.tensor(MTSIBert._BERT_CLS_IDX).reshape(1)
+        if(len(self._curr_dialog_window) == 0):
+            self._curr_dialog_window = torch.tensor(MTSIBert._BERT_CLS_IDX).reshape(1)
         else:
             has_more_sentences = True
             # remove the old separator
-            self._curr_dialog = self._curr_dialog[self._curr_dialog != MTSIBert._BERT_SEP_IDX]
+            self._curr_dialog_window = self._curr_dialog_window[self._curr_dialog_window != MTSIBert._BERT_SEP_IDX]
             #append the new separator
-            self._curr_dialog = torch.cat((self._curr_dialog, torch.tensor(MTSIBert._BERT_SEP_IDX).reshape(1)))
-        self._curr_dialog = torch.cat((self._curr_dialog, input[turn]))
+            self._curr_dialog_window = torch.cat((self._curr_dialog_window,\
+                                                 torch.tensor(MTSIBert._BERT_SEP_IDX).reshape(1)))
+        self._curr_dialog_window = torch.cat((self._curr_dialog_window, input))
 
         #remove padding
-        self._curr_dialog = self._curr_dialog[self._curr_dialog != 0]
+        self._curr_dialog_window = self._curr_dialog_window[self._curr_dialog_window != 0]
 
         #compute the segment for one or multiple sentences
-        segment = torch.zeros(len(self._curr_dialog), dtype=torch.long)
+        segment = torch.zeros(len(self._curr_dialog_window), dtype=torch.long)
         if has_more_sentences:
-            for idx in reversed(range(len(self._curr_dialog))): #TODO avoid to overwrite pos 0
-                if self._curr_dialog[idx] != MTSIBert._BERT_SEP_IDX:
+            for idx in reversed(range(len(self._curr_dialog_window))): #TODO avoid to overwrite pos 0
+                if self._curr_dialog_window[idx] != MTSIBert._BERT_SEP_IDX:
                     segment[idx] = 1 
                 else:
                     break
-
-        return self._curr_dialog, segment
+        
+        return self._curr_dialog_window, segment
 
 
     def dialogue_input_flush(self):
         """
         Flush the current dialogue window
         """
-        self._curr_dialog = []
-        return self._curr_dialog
+        self._curr_dialog_window = []
+        return self._curr_dialog_window
 
 
 

@@ -52,10 +52,8 @@ print(segments_tensor)
 
 #pdb.set_trace()
 #get BertModel hidden states
-"""
-model = MTSIBert.MTSIBert(num_layers=2, n_labels=3, batch_size=1, device=dev)
 
-#notify all batchnorm and dropout layer to put themself in test mode
+model = BertModel.from_pretrained('bert_base_uncased')
 model.eval()
 
 #put everything on GPU if active
@@ -72,4 +70,4 @@ with torch.no_grad():
 print(len(encoded_layers))
 print(encoded_layers[0].shape)
 print(pooled_output.type())
-print(pooled_output.shape) """
+print(pooled_output.shape)

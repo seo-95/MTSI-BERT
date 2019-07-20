@@ -24,7 +24,7 @@ def main():
     badapter_val = FriendlyBert(validation_set, tokenizer, KvretConfig._KVRET_MAX_BERT_TOKEN_PER_VAL_SENTENCE + 1)
 
     # Parameters
-    params = {'batch_size': 7,
+    params = {'batch_size': KvretConfig._BATCH_SIZE,
             'shuffle': False,
             'num_workers': 0}
 
@@ -35,37 +35,21 @@ def main():
     model = MTSIBert(num_layers = KvretConfig._LAYERS_NUM,\
                     n_labels = KvretConfig._N_LABELS,\
                     batch_size = KvretConfig._BATCH_SIZE,\
-                    pretrained = 'bert-base-cased')
+                    pretrained = 'bert-base-cased',\
+                    seed = KvretConfig._SEED)
 
 
     # ------------- TRAINING ------------- 
-
+    hidden = model.init_hidden()
     for epoch in range(_N_EPOCHS):
        for local_batch, local_labels, dialogue_ids in training_generator:
             #compute the mask
             #attention_mask = [[float(idx>0) for idx in sentence]for sentence in local_batch]
             #mask = torch.tensor(attention_mask)
-            local_out = []
-            hidden = model.init_hidden()
-            #TODO clean the gradient
-
-            for curr_sentence in range(len(local_batch)):
-
-                input, segment = model.dialogue_input_generator(local_batch, curr_sentence)
-                #TODO insert in the model
-
-                out, hidden = model(input, local_labels[curr_sentence], hidden, segment)
-                # appen the output to the local batch
-                local_out.append(out)
-                pdb.set_trace()
-
-                # clean the Bert window at the end of dialogue
-                if curr_sentence != 0 and dialogue_ids[curr_sentence] != dialogue_ids[curr_sentence-1]:
-                    pdb.set_trace()
-                    # new dialog ==> flush the dialogue window
-                    model.dialogue_input_flush()
-                    # here re-insert the last sentence (the first of the new dialogue)
-                    input, _ = model.dialogue_input_generator(local_batch, curr_sentence)
+            
+            out, hidden = model(local_batch, hidden, dialogue_ids)
+            pdb.set_trace()
+            
 
             
 
