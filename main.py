@@ -3,6 +3,7 @@ from model import (KvretDataset, KvretConfig, MTSIKvretConfig, FriendlyBert, MTS
 from pytorch_transformers import BertTokenizer
 from torch.utils.data import DataLoader
 import datetime
+import os
 import pdb
 
 
@@ -41,6 +42,9 @@ def main():
     model.to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE)
+    
+    # creates the directory for the checkpoints     
+    os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH), exist_ok=True)
 
 
     # ------------- TRAINING ------------- 
@@ -103,9 +107,10 @@ def main():
         res_str = 'EPOCH '+str(epoch)+' || TRAIN LOSS ==> '+str(np.mean(train_losses))+\
                                     ' || VALIDATION LOSS ==> '+str(np.mean(val_losses))
         print(res_str)
+        os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH+curr_date+'/'), exist_ok=True)
         # write result for current checkpoint
-        with open(MTSIKvretConfig._SAVING_PATH+curr_date+'checkpoint.txt') as f:
-            f.write('checkpoint '+curr_date+'\n'+ res_str)
+        with open(MTSIKvretConfig._SAVING_PATH+curr_date+'/checkpoint.txt', "w+") as f:
+            f.write('checkpoint '+curr_date+'\n')
 
             
 
