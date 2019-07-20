@@ -45,6 +45,7 @@ def main():
 
     # ------------- TRAINING ------------- 
     for epoch in range(_N_EPOCHS):
+        model.train()
         train_losses = []
         hidden = model.init_hidden()
         for local_batch, local_labels, dialogue_ids in training_generator:
@@ -58,11 +59,21 @@ def main():
             local_labels = local_labels.to(device)
             
             output, hidden = model(local_batch, hidden, dialogue_ids, device)
-
             loss = loss_fn(output, local_labels)
-            train_losses.append(loss)
-            loss.backward(retain_graph=True)
+            train_losses.append(loss.item())
+            # detach the hidden after each batch to avoid infinite gradient graph
+            hidden.detach_()
+            loss.backward()
+            clipping_value = 1
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value)
             optimizer.step()
+            
+            occupied_mem_before = round(torch.cuda.memory_allocated()/1000000000, 2)
+            occupied_cache_before = round(torch.cuda.memory_cached()/1000000000, 2)
+            torch.cuda.empty_cache()
+            occupied_mem_after = round(torch.cuda.memory_allocated()/1000000000, 2)
+            occupied_cache_after = round(torch.cuda.memory_cached()/1000000000, 2)
+            #pdb.set_trace()
 
         #end of epoch
         #saves the model weights
@@ -87,7 +98,7 @@ def main():
                     output, hidden = model(local_batch, hidden, dialogue_ids, device)
                     
                     loss = loss_fn(output, local_labels)
-                    val_losses.append(loss)
+                    val_losses.append(loss.item())
 
         res_str = 'EPOCH '+str(epoch)+' || TRAIN LOSS ==> '+str(np.mean(train_losses))+\
                                     ' || VALIDATION LOSS ==> '+str(np.mean(val_losses))
