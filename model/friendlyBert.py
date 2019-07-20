@@ -37,11 +37,10 @@ class FriendlyBert(Dataset):
 
 
     def __getitem__(self, idx):
-        data = self._dataset.__getitem__(idx)
+        utterance, intent, dialogue_id = self._dataset.__getitem__(idx)
 
         # prepare the utterance
-        text = data[0]
-        tok_text = self._tokenizer.tokenize(text)
+        tok_text = self._tokenizer.tokenize(utterance)
         tok_text_len = len(tok_text)
 
         # apply padding if needed
@@ -50,10 +49,7 @@ class FriendlyBert(Dataset):
             tok_text = self.do_padding(tok_text, self._max_sequence_len)
         tok_idx = self._tokenizer.convert_tokens_to_ids(tok_text)
 
-        # extract the intent
-        intent = data[-1]
-
-        return torch.tensor(tok_idx), intent
+        return torch.tensor(tok_idx), intent, dialogue_id
 
 
     def do_padding(self, tok_text, max_len, pad_token = '[PAD]'):

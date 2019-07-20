@@ -7,7 +7,19 @@ import pdb
 
 
 class KvretDataset(Dataset):
-    """Kvret dataset by Stanford NLP group"""
+    """
+    Kvret dataset class
+    
+    This class handles the Kvret dataset by Stanford NLP group.
+
+    Input:
+        json_path : path of the kvret.json
+
+    Output: (of the __getitem__(idx))
+        utterance : text utterance
+        intent : integer label for the intent
+        dialogue_id : id of the dialogue
+    """
 
     _INTENTS_TO_IDX = {'schedule': 0,
                          'weather': 1,
@@ -39,8 +51,9 @@ class KvretDataset(Dataset):
         
         X = self._dataset[idx]['utterance']
         y = self._dataset[idx]['intent']
+        dialogue_id = self._dataset[idx]['id']
 
-        return X, KvretDataset._INTENTS_TO_IDX[y]
+        return X, KvretDataset._INTENTS_TO_IDX[y], dialogue_id
 
 
     def get_max_tokens_per_dialogue(self, tokenizer):
