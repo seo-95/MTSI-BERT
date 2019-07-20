@@ -39,7 +39,7 @@ class MTSIBert(nn.Module):
 
 
     
-    def forward(self, input, hidden, dialogue_ids):
+    def forward(self, input, hidden, dialogue_ids, device='cpu'):
 
         """
         Input:
@@ -47,11 +47,15 @@ class MTSIBert(nn.Module):
             labels : tensor of dim `1 x B`
             hidden : the hidden state for the model
             dialogue_ids : list of string ids of len `B`
+
+        Output:
+            prediction : tensor having shape `B x NUM_CLASSES`
+            hidden : tensor having shape `NUM_LAYERS x 1 X 768`
         """
         cls_batch = []
         for curr_sentence, curr_dialog in zip(input, dialogue_ids):
-            bert_input, segments = self.add_to_dialog_window(curr_sentence)
-
+            
+            bert_input, segments = self.add_to_dialog_window(curr_sentence, device)
             hidden_states, cls_out = self._bert(input_ids = bert_input.unsqueeze(0),\
                                                  token_type_ids = segments.unsqueeze(0))
             # cls_out = batch_sizex768
@@ -62,7 +66,7 @@ class MTSIBert(nn.Module):
             if self._curr_dialog_id and curr_dialog != self._curr_dialog_id:
                 self.dialogue_input_flush()
                 # here re-insert the last sentence (the first of the new dialogue)
-                bert_input, _ = self.add_to_dialog_window(curr_sentence)
+                bert_input, _ = self.add_to_dialog_window(curr_sentence, device)
             self._curr_dialog_id = curr_dialog
 
         # cls_batch is a list of list having len `B`. Interl lists length is 768
@@ -87,12 +91,13 @@ class MTSIBert(nn.Module):
 
 
 
-    def add_to_dialog_window(self, input):
+    def add_to_dialog_window(self, input, device = 'cpu'):
         """
         This method creates the dialogue input concatenating in the proper way the utterances
 
         Input:
             input : the set of utterances to append to the dialogue window
+            device : the device must be the same on which both input and the MTSIBert model are.
         Output:
             curr_dialog_window
             segment : segment vector for the Bert model (sentence A and B)
@@ -107,21 +112,22 @@ class MTSIBert(nn.Module):
         has_more_sentences = False
         # append [CLS] at the beginning
         if(len(self._curr_dialog_window) == 0):
-            self._curr_dialog_window = torch.tensor(MTSIBert._BERT_CLS_IDX).reshape(1)
+            self._curr_dialog_window = torch.tensor(MTSIBert._BERT_CLS_IDX).reshape(1).to(device)
         else:
             has_more_sentences = True
             # remove the old separator
             self._curr_dialog_window = self._curr_dialog_window[self._curr_dialog_window != MTSIBert._BERT_SEP_IDX]
             #append the new separator
             self._curr_dialog_window = torch.cat((self._curr_dialog_window,\
-                                                 torch.tensor(MTSIBert._BERT_SEP_IDX).reshape(1)))
+                                                 torch.tensor(MTSIBert._BERT_SEP_IDX).reshape(1).to(device)))
+
         self._curr_dialog_window = torch.cat((self._curr_dialog_window, input))
 
         #remove padding
         self._curr_dialog_window = self._curr_dialog_window[self._curr_dialog_window != 0]
 
         #compute the segment for one or multiple sentences
-        segment = torch.zeros(len(self._curr_dialog_window), dtype=torch.long)
+        segment = torch.zeros(len(self._curr_dialog_window), dtype=torch.long).to(device)
         if has_more_sentences:
             for idx in reversed(range(len(self._curr_dialog_window))): #TODO avoid to overwrite pos 0
                 if self._curr_dialog_window[idx] != MTSIBert._BERT_SEP_IDX:

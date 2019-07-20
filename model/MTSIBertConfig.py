@@ -18,6 +18,7 @@ class KvretConfig():
     _KVRET_MAX_BERT_TOKEN_PER_TEST_SENTENCE = 50
 
 
+class MTSIKvretConfig:
     """
     MTSI-Bert model parameters for Kvret dataset
     """
@@ -25,6 +26,9 @@ class KvretConfig():
     _BATCH_SIZE = 8
     _LAYERS_NUM = 2
     _SEED = 1 #for reroducibility of results
+    _LEARNING_RATE = 0.005
+
+    _SAVING_PATH = 'savings/'
 
 
 
