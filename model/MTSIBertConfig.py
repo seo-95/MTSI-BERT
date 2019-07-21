@@ -23,7 +23,7 @@ class MTSIKvretConfig:
     MTSI-Bert model parameters for Kvret dataset
     """
     _N_LABELS = 3
-    _BATCH_SIZE = 128
+    _BATCH_SIZE = 4
     _LAYERS_NUM = 2
     _SEED = 1 #for reroducibility of results
     _LEARNING_RATE = 0.005

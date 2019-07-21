@@ -69,16 +69,16 @@ class MTSIBert(nn.Module):
                 # here re-insert the last sentence (the first of the new dialogue)
                 bert_input, _ = self.add_to_dialog_window(curr_sentence, device)
             self._curr_dialog_id = curr_dialog
-        pdb.set_trace()
+
         # cls_batch is a list of list having len `B`. Interl lists length is 768
         gru_input = torch.stack(cls_batch).squeeze(1).squeeze(1).unsqueeze(0)
         # gru input is a tensor of shape `1 x B x 768`
         gru_out, hidden = self._gru(gru_input, hidden)
         logits = self._classifier(gru_out)
-        pdb.set_trace()
+
         logits = logits.squeeze(0) # now logits has dim `B x 3` (batch_size * num_labels)
         prediction = self._softmax(logits, dim=1)
-        pdb.set_trace()
+
         return prediction, hidden
         
 

@@ -1,11 +1,15 @@
-import torch
-from model import (KvretDataset, KvretConfig, MTSIKvretConfig, FriendlyBert, MTSIBert)
-from pytorch_transformers import BertTokenizer
-from torch.utils.data import DataLoader
 import datetime
+import logging
 import os
 import pdb
 
+import numpy as np
+import torch
+from pytorch_transformers import BertTokenizer
+from torch.utils.data import DataLoader
+
+from model import (FriendlyBert, KvretConfig, KvretDataset, MTSIBert,
+                   MTSIKvretConfig)
 
 _N_EPOCHS = 4
 
@@ -14,6 +18,7 @@ def main():
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
+    print('active device = '+str(device))
 
     # Dataset preparation
     training_set = KvretDataset(KvretConfig._KVRET_TRAIN_PATH)
@@ -45,13 +50,27 @@ def main():
     
     # creates the directory for the checkpoints     
     os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH), exist_ok=True)
-
+    curr_date = datetime.datetime.now().isoformat()
+    os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH+curr_date+'/'), exist_ok=True)
+    #if not os.path.exists(MTSIKvretConfig._SAVING_PATH+curr_date+'/'+'MTSI.log'):
+    #  with open(MTSIKvretConfig._SAVING_PATH+curr_date+'/'+'MTSI.log', 'w'): pass
+    logging.basicConfig(filename=MTSIKvretConfig._SAVING_PATH+curr_date+'/'+'MTSI.log', filemode='a', level=logging.INFO)
+    
+    # initializes statistics
+    train_len = training_set.__len__()
+    val_len = validation_set.__len__()
+    best_accuracy = 0
 
     # ------------- TRAINING ------------- 
+
+
     for epoch in range(_N_EPOCHS):
         model.train()
         train_losses = []
+        train_correctly_predicted = 0
+        val_correctly_predicted = 0
         hidden = model.init_hidden()
+        
         for local_batch, local_labels, dialogue_ids in training_generator:
             
             optimizer.zero_grad()
@@ -63,32 +82,35 @@ def main():
             local_labels = local_labels.to(device)
             
             output, hidden = model(local_batch, hidden, dialogue_ids, device)
+
             loss = loss_fn(output, local_labels)
             train_losses.append(loss.item())
             # detach the hidden after each batch to avoid infinite gradient graph
             hidden.detach_()
+            break
             loss.backward()
-            clipping_value = 1
+            clipping_value = 5
             torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value)
             optimizer.step()
+
+            # count correct predictions
+            predictions = torch.argmax(output, dim=1)
+            train_correctly_predicted += (predictions == local_labels).sum().item()
             
-            occupied_mem_before = round(torch.cuda.memory_allocated()/1000000000, 2)
-            occupied_cache_before = round(torch.cuda.memory_cached()/1000000000, 2)
+            
+           
+            #occupied_mem_before = round(torch.cuda.memory_allocated()/1000000000, 2)
+            #occupied_cache_before = round(torch.cuda.memory_cached()/1000000000, 2)
             torch.cuda.empty_cache()
-            occupied_mem_after = round(torch.cuda.memory_allocated()/1000000000, 2)
-            occupied_cache_after = round(torch.cuda.memory_cached()/1000000000, 2)
-            #pdb.set_trace()
-
+            #occupied_mem_after = round(torch.cuda.memory_allocated()/1000000000, 2)
+            #occupied_cache_after = round(torch.cuda.memory_cached()/1000000000, 2)
+            
+            
         #end of epoch
-        #saves the model weights
-        curr_date = datetime.datetime.now().isoformat()
-        torch.save(model.state_dict(),\
-                     MTSIKvretConfig._SAVING_PATH+curr_date+'/state_dict.pt')
-
 
         # ------------- VALIDATION ------------- 
         val_losses = []
-        with torch.no_grad:
+        with torch.no_grad():
             model.eval()
             hidden = model.init_hidden()
             for local_batch, local_labels, dialogue_ids in validation_generator:
@@ -104,13 +126,30 @@ def main():
                     loss = loss_fn(output, local_labels)
                     val_losses.append(loss.item())
 
-        res_str = 'EPOCH '+str(epoch)+' || TRAIN LOSS ==> '+str(np.mean(train_losses))+\
-                                    ' || VALIDATION LOSS ==> '+str(np.mean(val_losses))
-        print(res_str)
-        os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH+curr_date+'/'), exist_ok=True)
-        # write result for current checkpoint
-        with open(MTSIKvretConfig._SAVING_PATH+curr_date+'/checkpoint.txt', "w+") as f:
-            f.write('checkpoint '+curr_date+'\n')
+                    # count correct predictions
+                    predictions = torch.argmax(output, dim=1)
+                    val_correctly_predicted += (predictions == local_labels).sum().item()
+                    break
+
+
+        train_accuracy = round(train_correctly_predicted/train_len * 100, 2)
+        val_accuracy = round(val_correctly_predicted/val_len * 100, 2)
+        train_mean_loss = round(np.mean(train_losses), 4)
+        val_mean_loss = round(np.mean(val_losses), 4)
+        
+        # check if new best model
+        if val_accuracy > best_accuracy:
+          #saves the model weights
+          best_accuracy = val_accuracy
+          torch.save(model.state_dict(),\
+                       MTSIKvretConfig._SAVING_PATH+curr_date+'/state_dict.pt')
+        
+        log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+':: || TRAIN LOSS = '+str(train_mean_loss)+', TRAIN ACCURACY= '+str(train_accuracy)+'%'+\
+                                    '\n\t\t\t || VAL LOSS = '+str(val_mean_loss)+', VAL ACCURACY= '+str(val_accuracy)+'%'
+        print(log_str)
+        logging.info(log_str)
+        pdb.set_trace()
+
 
             
 
@@ -151,6 +190,3 @@ def statistics():
 if __name__ == '__main__':
     #statistics()
     main()
-
-
-
