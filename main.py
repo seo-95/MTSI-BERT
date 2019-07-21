@@ -87,7 +87,6 @@ def main():
             train_losses.append(loss.item())
             # detach the hidden after each batch to avoid infinite gradient graph
             hidden.detach_()
-            break
             loss.backward()
             clipping_value = 5
             torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value)
@@ -129,7 +128,6 @@ def main():
                     # count correct predictions
                     predictions = torch.argmax(output, dim=1)
                     val_correctly_predicted += (predictions == local_labels).sum().item()
-                    break
 
 
         train_accuracy = round(train_correctly_predicted/train_len * 100, 2)
