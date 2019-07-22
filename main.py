@@ -85,12 +85,12 @@ def main():
 
             loss = loss_fn(output, local_labels)
             train_losses.append(loss.item())
-            # detach the hidden after each batch to avoid infinite gradient graph
-            hidden.detach_()
             loss.backward()
             clipping_value = 5
             torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value)
             optimizer.step()
+            # detach the hidden after each batch to avoid infinite gradient graph
+            hidden.detach_()
 
             # count correct predictions
             predictions = torch.argmax(output, dim=1)
