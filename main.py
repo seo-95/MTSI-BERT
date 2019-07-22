@@ -59,7 +59,7 @@ def main():
     # initializes statistics
     train_len = training_set.__len__()
     val_len = validation_set.__len__()
-    best_accuracy = 0
+    best_loss = 100
 
     # ------------- TRAINING ------------- 
 
@@ -70,6 +70,7 @@ def main():
         train_correctly_predicted = 0
         val_correctly_predicted = 0
         hidden = model.init_hidden()
+        hidden = hidden.to(device)
         
         for local_batch, local_labels, dialogue_ids in training_generator:
             
@@ -77,17 +78,18 @@ def main():
             #compute the mask
             #attention_mask = [[float(idx>0) for idx in sentence]for sentence in local_batch]
             #mask = torch.tensor(attention_mask)
-            hidden = hidden.to(device)
+            
             local_batch = local_batch.to(device)
             local_labels = local_labels.to(device)
             
-            output, hidden = model(local_batch, hidden, dialogue_ids, device)
+            output, logits, hidden = model(local_batch, hidden, dialogue_ids, device)
 
-            loss = loss_fn(output, local_labels)
+            loss = loss_fn(logits, local_labels)
             train_losses.append(loss.item())
             loss.backward()
-            clipping_value = 5
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value)
+            torch.cuda.empty_cache()
+            #clipping_value = 5
+            #torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value) TODO only on GRU
             optimizer.step()
             # detach the hidden after each batch to avoid infinite gradient graph
             hidden.detach_()
@@ -120,9 +122,9 @@ def main():
                     local_batch = local_batch.to(device)
                     local_labels = local_labels.to(device)
                     
-                    output, hidden = model(local_batch, hidden, dialogue_ids, device)
-                    
-                    loss = loss_fn(output, local_labels)
+                    output, logits, hidden = model(local_batch, hidden, dialogue_ids, device)
+                    torch.cuda.empty_cache()
+                    loss = loss_fn(logits, local_labels)
                     val_losses.append(loss.item())
 
                     # count correct predictions
@@ -136,9 +138,9 @@ def main():
         val_mean_loss = round(np.mean(val_losses), 4)
         
         # check if new best model
-        if val_accuracy > best_accuracy:
+        if val_mean_loss < best_loss:
           #saves the model weights
-          best_accuracy = val_accuracy
+          best_loss = val_mean_loss
           torch.save(model.state_dict(),\
                        MTSIKvretConfig._SAVING_PATH+curr_date+'/state_dict.pt')
         
@@ -146,8 +148,6 @@ def main():
                                     '\n\t\t\t || VAL LOSS = '+str(val_mean_loss)+', VAL ACCURACY= '+str(val_accuracy)+'%'
         print(log_str)
         logging.info(log_str)
-        pdb.set_trace()
-
 
             
 

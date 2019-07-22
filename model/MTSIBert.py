@@ -79,7 +79,7 @@ class MTSIBert(nn.Module):
         logits = logits.squeeze(0) # now logits has dim `B x 3` (batch_size * num_labels)
         prediction = self._softmax(logits, dim=1)
 
-        return prediction, hidden
+        return prediction, logits, hidden
         
 
 
