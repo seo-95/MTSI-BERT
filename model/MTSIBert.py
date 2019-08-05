@@ -54,7 +54,7 @@ class MTSIBert(nn.Module):
         """
         cls_batch = []
         for curr_sentence, curr_dialog in zip(input, dialogue_ids):
-            
+
             bert_input, segments = self.add_to_dialog_window(curr_sentence, device)
             #print(bert_input.shape)
             hidden_states, cls_out = self._bert(input_ids = bert_input.unsqueeze(0),\
@@ -95,6 +95,8 @@ class MTSIBert(nn.Module):
     def add_to_dialog_window(self, input, device = 'cpu'):
         """
         This method creates the dialogue input concatenating in the proper way the utterances
+
+        [CLS] <Q(t-n)> [SEP] <R(t-n)> [SEP] <Q(t-n+1)> [SEP] <R(t-n+1)> [SEP] ... <Q(t)> [SEP] <R(t)> [SEP]
 
         Input:
             input : the set of utterances to append to the dialogue window
