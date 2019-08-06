@@ -19,12 +19,26 @@ class KvretDataset(Dataset):
         utterance : text utterance
         intent : integer label for the intent
         dialogue_id : id of the dialogue
+
+
+    DATASET: the internal dataset is stored as a dictionary having the following structure
+        {
+            'id': < id of the dialogue >
+            'utterances': < list of utterances in the dialogue >
+            'intent': < name of intent for the dialogue: schedule, weather, navigate >
+            'kb_action': < name of the action for the dialogue: fetch, insert >
+        }
     """
 
-    _INTENTS_TO_IDX = {'schedule': 0,
-                         'weather': 1,
-                          'navigate': 2}
-    _IDX_TO_LABEL = ['schedule', 'weather', 'navigate']
+    _INTENT_TO_IDX = {'schedule': 0,
+                        'weather': 1,
+                        'navigate': 2}
+    _IDX_TO_INTENT = ['schedule', 'weather', 'navigate']
+
+    # KB actions
+    _ACTION_TO_IDX = {'fetch': 0,
+                        'insert': 1}
+    _IDX_TO_ACTION = ['fetch', 'insert']
 
 
     def __init__(self, json_path):
@@ -37,11 +51,17 @@ class KvretDataset(Dataset):
         with open(json_path) as json_file:
             json_data = json.load(json_file)
 
+        get_action = lambda items : 'insert' if items is None else 'fetch' 
+
         for t_sample in json_data:
+            curr_dialog = {'id': t_sample['scenario']['uuid'],\
+                            'utterances': [],\
+                            'intent': t_sample['scenario']['task']['intent'],\
+                            'kb_action': get_action(t_sample['scenario']['kb']['items'])}
             for utterance in t_sample['dialogue']:
-                self._dataset.append({'id': t_sample['scenario']['uuid'],\
-                                    'utterance': utterance['data']['utterance'],\
-                                    'intent': t_sample['scenario']['task']['intent']})        
+                curr_dialog['utterances'].append(utterance['data']['utterance'])    
+            self._dataset.append(curr_dialog)        
+
 
     def __len__(self):
         return len(self._dataset)
@@ -49,16 +69,18 @@ class KvretDataset(Dataset):
 
     def __getitem__(self, idx):
         
-        X = self._dataset[idx]['utterance']
-        y = self._dataset[idx]['intent']
+        utterances = self._dataset[idx]['utterances']
+        intent = self._dataset[idx]['intent']
+        action = self._dataset[idx]['kb_action']
         dialogue_id = self._dataset[idx]['id']
 
-        return X, KvretDataset._INTENTS_TO_IDX[y], dialogue_id
+        return utterances, KvretDataset._INTENT_TO_IDX[intent],\
+                KvretDataset._ACTION_TO_IDX[action], dialogue_id
 
 
     def get_max_tokens_per_dialogue(self, tokenizer):
         """
-        This utilities is provided in order to find the maximum length of a dialogue inside the dataset based on the given tokenizer
+        Returns the maximum length of a dialogue inside the dataset based on the given tokenizer
 
         Input:
             tokenizer : The tokenizer you want to use for the count of tokens. The tokenizer must implement the tokenize(str) method
@@ -68,35 +90,26 @@ class KvretDataset(Dataset):
             max_num_sentences
             id : ID of the dialogue having the max tokens
         """
-        curr_id = ''
-        curr_tokens = 0
-        curr_sentences = 0
+        
         curr_max = {'num_tokens': 0,\
                     'id': '',\
                     'num_sentences': 0}
 
-        for sample in self._dataset:
-            if curr_id != '' and sample['id'] == curr_id:
-                curr_tokens += len(tokenizer.tokenize(sample['utterance']))
-                curr_sentences += 1
-
-            else: 
-                # curr_tokens + num_of_[SEP] = curr_tokens + curr_sentences - 1
-                if curr_id != '' and curr_tokens + curr_sentences - 1 >= curr_max['num_tokens']:
-                    curr_max['num_tokens'] = curr_tokens
-                    curr_max['id'] = curr_id
-                    curr_max['num_sentences'] = curr_sentences
-                
-                curr_id = sample['id']
-                curr_tokens = len(tokenizer.tokenize(sample['utterance']))
-                curr_sentences = 1
+        for dialogue in self._dataset:
+            curr_tokens = 0
+            for utt in dialogue['utterances']:
+                curr_tokens += len(tokenizer.tokenize(utt))
+            if curr_tokens > curr_max['num_tokens']:
+                curr_max['num_tokens'] = curr_tokens
+                curr_max['id'] = dialogue['id']
+                curr_max['num_sentences'] = len(dialogue['utterances'])
 
         return curr_max['num_tokens'], curr_max['num_sentences'], curr_max['id']
 
 
     def get_max_tokens_per_sentence(self, tokenizer):
         """
-        This utilities returns the longest sentence in dataset based on the given tokenizer
+        Returns the longest sentence in dataset based on the given tokenizer
 
         Input:
             tokenizer : The tokenizer you want to use for the count of tokens. The tokenizer must implement the tokenize(str) method
@@ -110,15 +123,49 @@ class KvretDataset(Dataset):
                     'sentence': '',\
                     'id': ''}
 
-        for t_sample in self._dataset:
-            curr_len = len(tokenizer.tokenize(t_sample['utterance']))
-            if curr_len > curr_max['num_tokens']:
-                curr_max['num_tokens'] = curr_len
-                curr_max['sentence'] = t_sample['utterance']
-                curr_max['id'] = t_sample['id']
+        for dialogue in self._dataset:
+            for utt in dialogue['utterances']:
+                curr_len = len(tokenizer.tokenize(utt))
+                if curr_len > curr_max['num_tokens']:
+                    curr_max['num_tokens'] = curr_len
+                    curr_max['sentence'] = utt
+                    curr_max['id'] = dialogue['id']
         
         return curr_max['num_tokens'],  curr_max['sentence'], curr_max['id']
-            
+
+
+    def get_max_utterances_per_dialogue(self):
+        
+        curr_max = 0
+        max_dialogue_id = ''
+
+        for dialogue in self._dataset:
+            curr_len = len(dialogue['utterances'])
+            if curr_len > curr_max:
+                curr_max = curr_len
+                max_dialogue_id = dialogue['id']
+
+        return curr_max, max_dialogue_id
+
+
+    def get_action_frequency(self):
+        
+        fetch_count = 0
+        insert_count = 0
+
+        for dialogue in self._dataset:
+            if dialogue['kb_action'] == 'fetch':
+                fetch_count += 1
+            else:
+                if dialogue['kb_action'] == 'insert':
+                    insert_count += 1
+                else:
+                    raise '[EXCEPTION] -- Neither fetch nor insert'
+
+        assert fetch_count + insert_count == len(self._dataset), '[ASSERT FAILED] -- Misleading count!'
+
+        return fetch_count, insert_count
+
 
 
 

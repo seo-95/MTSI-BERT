@@ -23,13 +23,14 @@ class FriendlyBert(Dataset):
         intent : the intent index for that utterance
 
     Note:
-        The intent should be the last returned elements in the tuple provided by the __getitem__() of the dataset you provide. The text the first one.
+        Takes care about the feature order returned by the dataset __getitem__()
     """
 
-    def __init__(self, dataset, tokenizer, max_sequence_len):
+    def __init__(self, dataset, tokenizer, max_sequence_len, max_dialogue_len):
         self._dataset = dataset
         self._tokenizer = tokenizer
         self._max_sequence_len = max_sequence_len
+        self._max_dialogue_len = max_dialogue_len
 
 
     def __len__(self):
@@ -37,19 +38,30 @@ class FriendlyBert(Dataset):
 
 
     def __getitem__(self, idx):
-        utterance, intent, dialogue_id = self._dataset.__getitem__(idx)
+        utterances, intent, action, dialogue_id = self._dataset.__getitem__(idx)
 
-        # prepare the utterance
-        tok_text = self._tokenizer.tokenize(utterance)
-        tok_text_len = len(tok_text)
+        # this vector will contain list of utterances ids
+        utt_ids = []
+        for utt in utterances:
+            tok_utt = self._tokenizer.tokenize(utt)
+            tok_utt_len = len(tok_utt)
+            # apply padding if needed
+            assert tok_utt_len <= self._max_sequence_len
+            if tok_utt_len < self._max_sequence_len:
+                tok_utt = self.do_padding(tok_utt, self._max_sequence_len)
+            tok_idx = self._tokenizer.convert_tokens_to_ids(tok_utt)
+            utt_ids.append(tok_idx)
 
-        # apply padding if needed
-        assert tok_text_len <= self._max_sequence_len
-        if tok_text_len < self._max_sequence_len:
-            tok_text = self.do_padding(tok_text, self._max_sequence_len)
-        tok_idx = self._tokenizer.convert_tokens_to_ids(tok_text)
+        # apply dialogue padding
+        dialogue_len = len(utt_ids)
+        if dialogue_len < self._max_dialogue_len:
+            residual = self._max_dialogue_len - dialogue_len
+            utt_ids = utt_ids + [[0]*self._max_sequence_len]*residual
 
-        return torch.tensor(tok_idx), intent, dialogue_id
+        assert len(utt_ids) == self._max_dialogue_len, '[ASSERT FAILED] -- wrong dialogue len of ' + len(utt_ids)
+        assert len(utt_ids[0]) == self._max_sequence_len, '[ASSERT FAILED] -- wrong sentence len of ' + len(utt_ids[0])
+
+        return torch.tensor(utt_ids), intent, action, dialogue_id
 
 
     def do_padding(self, tok_text, max_len, pad_token = '[PAD]'):

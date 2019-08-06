@@ -17,13 +17,17 @@ class KvretConfig():
     _KVRET_MAX_BERT_TOKEN_PER_VAL_SENTENCE = 111
     _KVRET_MAX_BERT_TOKEN_PER_TEST_SENTENCE = 50
 
+    _KVRET_MAX_BERT_SENTENCE_PER_TRAIN_DIALOGUE = 12
+    _KVRET_MAX_BERT_SENTENCE_PER_VAL_DIALOGUE = 12
+    _KVRET_MAX_BERT_SENTENCE_PER_TEST_DIALOGUE = 12
+
 
 class MTSIKvretConfig:
     """
     MTSI-Bert model parameters for Kvret dataset
     """
     _N_LABELS = 3
-    _BATCH_SIZE = 4
+    _BATCH_SIZE = 3
     _LAYERS_NUM = 2
     _SEED = 1 #for reroducibility of results
     _LEARNING_RATE = 0.005

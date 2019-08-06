@@ -35,3 +35,33 @@ id = 3113d0ad-3d7a-4a55-acb8-d77b15ac40dd
 num tokens = 50, 
 num sentences = In San Jose, it is expected to be between 40-60F Monday and Tuesday, 70-80F Wednesday, 90-100F Thursday, 70-90F Friday, 30-40F Saturday, and 40-60F on Sunday., 
 id = 9724e6ff-8938-4bbe-bbd9-a6deba5debd4
+
+
+------------------- MAX SENTENCES PER DIALOGUE ----------------------------
+
+### TRAINING:
+num sentences = 12
+id = 7f1d72e6-7656-4db2-a4ee-3f56567f0cfd
+
+### VALIDATION:
+num sentences = 12
+id = 3113d0ad-3d7a-4a55-acb8-d77b15ac40dd
+
+### TEST
+num sentences = 12
+id = 17fa2345-7e74-4eb9-a999-ac35ae67c9da
+
+
+------------------- FETCH vs INSERT ----------------------------
+
+### TRAINING:
+num fetch = 2012
+num insert = 413
+
+### VALIDATION:
+num fetch = 242
+num insert = 60
+
+### TEST
+num fetch = 256
+num insert = 48

@@ -27,12 +27,16 @@ def train(load_path=None):
     # Bert adapter for dataset
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
     # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS)
-    badapter_train = FriendlyBert(training_set, tokenizer, KvretConfig._KVRET_MAX_BERT_TOKEN_PER_TRAIN_SENTENCE + 1)
-    badapter_val = FriendlyBert(validation_set, tokenizer, KvretConfig._KVRET_MAX_BERT_TOKEN_PER_VAL_SENTENCE + 1)
+    badapter_train = FriendlyBert(training_set, tokenizer,\
+                                    KvretConfig._KVRET_MAX_BERT_TOKEN_PER_TRAIN_SENTENCE + 1,\
+                                    KvretConfig._KVRET_MAX_BERT_SENTENCE_PER_TRAIN_DIALOGUE+1)
+    badapter_val = FriendlyBert(validation_set, tokenizer,\
+                                    KvretConfig._KVRET_MAX_BERT_TOKEN_PER_VAL_SENTENCE + 1,\
+                                    KvretConfig._KVRET_MAX_BERT_SENTENCE_PER_VAL_DIALOGUE+1)
 
     # Parameters
     params = {'batch_size': MTSIKvretConfig._BATCH_SIZE,
-            'shuffle': False,
+            'shuffle': True,
             'num_workers': 0}
 
     training_generator = DataLoader(badapter_train, **params)
@@ -79,13 +83,17 @@ def train(load_path=None):
         hidden = model.init_hidden()
         hidden = hidden.to(device)
         
-        for local_batch, local_labels, dialogue_ids in training_generator:
-            
+        for local_batch, local_intents, local_actions, dialogue_ids in training_generator:
+            pdb.set_trace()
             optimizer.zero_grad()
             
+            # local_batch.size() == B x D_LEN x U_LEN
+            # local_intents = B x D_LEN
+            # local_actions = B x D_LEN
             local_batch = local_batch.to(device)
             local_labels = local_labels.to(device)
             
+            # TODO adapt to dialogue granularity
             output, logits, hidden = model(local_batch, hidden, dialogue_ids, device)
 
             loss = loss_fn(logits, local_labels)
@@ -127,9 +135,6 @@ def train(load_path=None):
             hidden = model.init_hidden()
             hidden = hidden.to(device)
             for local_batch, local_labels, dialogue_ids in validation_generator:
-                    #compute the mask
-                    #attention_mask = [[float(idx>0) for idx in sentence]for sentence in local_batch]
-                    #mask = torch.tensor(attention_mask)
                     
                     local_batch = local_batch.to(device)
                     local_labels = local_labels.to(device)
@@ -167,33 +172,45 @@ def train(load_path=None):
 
 
 
+def print_statistics_per_set(curr_set):
+    tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
+
+    tok, sentences, id = curr_set.get_max_tokens_per_dialogue(tokenizer)
+    print('\n--- max tokens per dialogue ---')
+    print('num tokens = ' + str(tok) + ', \nnum sentences = ' + str(sentences) + ', \nid = ' + id)
+    tok, sentences, id = curr_set.get_max_tokens_per_sentence(tokenizer)
+    print('\n--- max tokens per sentence ---')
+    print('num tokens = ' + str(tok) + ', \nnum sentences = ' + str(sentences) + ', \nid = ' + id)
+    sentences, id = curr_set.get_max_utterances_per_dialogue()
+    print('\n--- max sentences per dialogue ---')
+    print('num sentences = ' + str(sentences) + ', \nid = ' + id)
+    fetch_count, insert_count = curr_set.get_action_frequency()
+    print('\n--- action frequency ---')
+    print('num fetch = ' + str(fetch_count) + 'vs num insert = ' + str(insert_count))
+
+
 def statistics():
     """
     To retrieve the max sentence lenth in order to apply the rigth amount of padding
     """
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
-    print('### TRAINING: ')
+
+    print('\n\t\t\t### TRAINING ###')
     training_set = KvretDataset(KvretConfig._KVRET_TRAIN_PATH)
-    #tok, sentences, id = training_set.get_max_tokens_per_dialogue(tokenizer)
-    tok, sentences, id = training_set.get_max_tokens_per_sentence(tokenizer)
-    print('num tokens = ' + str(tok) + ', \nnum sentences = ' + str(sentences) + ', \nid = ' + id)
-
-    print('### VALIDATION: ')
+    print_statistics_per_set(training_set)
+    
+    print('\n\t\t\t### VALIDATION ###')
     validation_set = KvretDataset(KvretConfig._KVRET_VAL_PATH)
-    #tok, sentences, id = validation_set.get_max_tokens_per_dialogue(tokenizer)
-    tok, sentences, id = validation_set.get_max_tokens_per_sentence(tokenizer)
-    print('num tokens = ' + str(tok) + ', \nnum sentences = ' + str(sentences) + ', \nid = ' + id)
+    print_statistics_per_set(validation_set)
 
-    print('### TEST: ')
+    print('\n\t\t\t### TEST ###')
     test_set = KvretDataset(KvretConfig._KVRET_TEST_PATH)
-    #tok, sentences, id = test_set.get_max_tokens_per_dialogue(tokenizer)
-    tok, sentences, id = test_set.get_max_tokens_per_sentence(tokenizer)
-    print('num tokens = ' + str(tok) + ', \nnum sentences = ' + str(sentences) + ', \nid = ' + id)
+    print_statistics_per_set(test_set)
 
 
 
 
 if __name__ == '__main__':
-    #statistics()
+    statistics()
     #train(load_path='savings/2019-08-04T17:43:29.354518/state_dict.pt')
-    train()
+    #train()
