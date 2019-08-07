@@ -13,7 +13,7 @@ from model import (FriendlyBert, KvretConfig, KvretDataset, MTSIBert,
 
 _N_EPOCHS = 20
 
-def train(load_path=None):
+def train(load_checkpoint_path=None):
 
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()
@@ -36,7 +36,7 @@ def train(load_path=None):
 
     # Parameters
     params = {'batch_size': MTSIKvretConfig._BATCH_SIZE,
-            'shuffle': True,
+            'shuffle': False,
             'num_workers': 0}
 
     training_generator = DataLoader(badapter_train, **params)
@@ -47,10 +47,11 @@ def train(load_path=None):
                     n_labels = MTSIKvretConfig._N_LABELS,\
                     batch_size = MTSIKvretConfig._BATCH_SIZE,\
                     pretrained = 'bert-base-cased',\
-                    seed = MTSIKvretConfig._SEED)
-    if load_path != None:
+                    seed = MTSIKvretConfig._SEED,
+                    window_size = MTSIKvretConfig._WINDOW_SIZE)
+    if load_checkpoint_path != None:
         print('model loaded from: '+load_path)
-        model.load_state_dict(torch.load(load_path))
+        model.load_state_dict(torch.load(load_checkpoint_path))
     if torch.cuda.device_count() > 1:
         print('active devices = '+str(torch.cuda.device_count()))
         model = nn.DataParallel(model)
@@ -83,18 +84,19 @@ def train(load_path=None):
         hidden = model.init_hidden()
         hidden = hidden.to(device)
         
-        for local_batch, local_intents, local_actions, dialogue_ids in training_generator:
-            pdb.set_trace()
+        for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
+            
             optimizer.zero_grad()
             
             # local_batch.size() == B x D_LEN x U_LEN
             # local_intents = B x D_LEN
             # local_actions = B x D_LEN
             local_batch = local_batch.to(device)
-            local_labels = local_labels.to(device)
+            local_intents = local_intents.to(device)
+            local_actions = local_actions.to(device)
             
-            # TODO adapt to dialogue granularity
-            output, logits, hidden = model(local_batch, hidden, dialogue_ids, device)
+            output, logits, hidden = model(local_batch, hidden, local_turns, dialogue_ids,\
+                                            persistence = True, device=device)
 
             loss = loss_fn(logits, local_labels)
             train_losses.append(loss.item())
@@ -128,6 +130,21 @@ def train(load_path=None):
             
         #end of epoch
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         # ------------- VALIDATION ------------- 
         val_losses = []
         with torch.no_grad():
@@ -139,7 +156,7 @@ def train(load_path=None):
                     local_batch = local_batch.to(device)
                     local_labels = local_labels.to(device)
                     
-                    output, logits, hidden = model(local_batch, hidden, dialogue_ids, device)
+                    output, logits, hidden = model(local_batch, hidden, turns, dialogue_ids, device)
                     torch.cuda.empty_cache()
                     
                     loss = loss_fn(logits, local_labels)
@@ -211,6 +228,6 @@ def statistics():
 
 
 if __name__ == '__main__':
-    statistics()
-    #train(load_path='savings/2019-08-04T17:43:29.354518/state_dict.pt')
-    #train()
+    #statistics()
+    #train(load_checkpoint_path='savings/2019-08-04T17:43:29.354518/state_dict.pt')
+    train()

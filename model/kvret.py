@@ -24,7 +24,8 @@ class KvretDataset(Dataset):
     DATASET: the internal dataset is stored as a dictionary having the following structure
         {
             'id': < id of the dialogue >
-            'utterances': < list of utterances in the dialogue >
+            'utterances': < list of utterances > where turn can be 'user' or 'agent'
+            'turns' : < list of turns > where turn can be 'user' and 'agent'
             'intent': < name of intent for the dialogue: schedule, weather, navigate >
             'kb_action': < name of the action for the dialogue: fetch, insert >
         }
@@ -40,6 +41,10 @@ class KvretDataset(Dataset):
                         'insert': 1}
     _IDX_TO_ACTION = ['fetch', 'insert']
 
+    # actors (avoid 0 cause it could be used for padding)
+    _ACTOR_TO_IDX = {'driver': 1,
+                        'assistant': 2}
+
 
     def __init__(self, json_path):
         """
@@ -51,16 +56,18 @@ class KvretDataset(Dataset):
         with open(json_path) as json_file:
             json_data = json.load(json_file)
 
-        get_action = lambda items : 'insert' if items is None else 'fetch' 
+        get_action = lambda items : 'insert' if items is None else 'fetch'
 
         for t_sample in json_data:
             curr_dialog = {'id': t_sample['scenario']['uuid'],\
                             'utterances': [],\
+                            'turns': [],\
                             'intent': t_sample['scenario']['task']['intent'],\
                             'kb_action': get_action(t_sample['scenario']['kb']['items'])}
             for utterance in t_sample['dialogue']:
-                curr_dialog['utterances'].append(utterance['data']['utterance'])    
-            self._dataset.append(curr_dialog)        
+                curr_dialog['utterances'].append(utterance['data']['utterance']) 
+                curr_dialog['turns'].append(utterance['turn'])
+            self._dataset.append(curr_dialog)
 
 
     def __len__(self):
@@ -70,12 +77,18 @@ class KvretDataset(Dataset):
     def __getitem__(self, idx):
         
         utterances = self._dataset[idx]['utterances']
+        turns_id = []
+        dialogue_turns = self._dataset[idx]['turns']
+        for t in dialogue_turns:
+            turns_id.append(KvretDataset._ACTOR_TO_IDX[t])
         intent = self._dataset[idx]['intent']
         action = self._dataset[idx]['kb_action']
         dialogue_id = self._dataset[idx]['id']
 
-        return utterances, KvretDataset._INTENT_TO_IDX[intent],\
-                KvretDataset._ACTION_TO_IDX[action], dialogue_id
+        return utterances, turns_id,\
+                            KvretDataset._INTENT_TO_IDX[intent],\
+                            KvretDataset._ACTION_TO_IDX[action],\
+                            dialogue_id
 
 
     def get_max_tokens_per_dialogue(self, tokenizer):

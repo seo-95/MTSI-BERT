@@ -38,7 +38,7 @@ class FriendlyBert(Dataset):
 
 
     def __getitem__(self, idx):
-        utterances, intent, action, dialogue_id = self._dataset.__getitem__(idx)
+        utterances, dialogue_turns, intent, action, dialogue_id = self._dataset.__getitem__(idx)
 
         # this vector will contain list of utterances ids
         utt_ids = []
@@ -52,16 +52,17 @@ class FriendlyBert(Dataset):
             tok_idx = self._tokenizer.convert_tokens_to_ids(tok_utt)
             utt_ids.append(tok_idx)
 
-        # apply dialogue padding
+        # apply dialogue padding both to utterances and turn vector
         dialogue_len = len(utt_ids)
         if dialogue_len < self._max_dialogue_len:
             residual = self._max_dialogue_len - dialogue_len
             utt_ids = utt_ids + [[0]*self._max_sequence_len]*residual
+            dialogue_turns = dialogue_turns + [0]*residual
 
         assert len(utt_ids) == self._max_dialogue_len, '[ASSERT FAILED] -- wrong dialogue len of ' + len(utt_ids)
         assert len(utt_ids[0]) == self._max_sequence_len, '[ASSERT FAILED] -- wrong sentence len of ' + len(utt_ids[0])
 
-        return torch.tensor(utt_ids), intent, action, dialogue_id
+        return torch.tensor(utt_ids), torch.tensor(dialogue_turns), intent, action, dialogue_id
 
 
     def do_padding(self, tok_text, max_len, pad_token = '[PAD]'):
