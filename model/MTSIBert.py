@@ -5,7 +5,7 @@ from collections import deque
 import torch
 from pytorch_transformers import BertModel, BertTokenizer
 from torch import nn
-
+from .MTSIBertInputBuilder import MTSITensorBuilder
 
 class MTSIBert(nn.Module):
     """Implementation of MTSI-Bert"""
@@ -40,7 +40,8 @@ class MTSIBert(nn.Module):
 
 
     
-    def forward(self, input, hidden, turns, dialogue_ids, persistence = False, device='cpu'):
+    def forward(self, input, hidden, turns, dialogue_ids, tensor_builder: MTSITensorBuilder,\
+                persistence=False, device='cpu'):
 
         """
         Input:
@@ -53,13 +54,17 @@ class MTSIBert(nn.Module):
             prediction : tensor having shape `B x NUM_CLASSES`
             hidden : tensor having shape `NUM_LAYERS x 1 X 768`
         """
+
         cls_batch = []
         new_dialogue = False
 
 
         # TRY
-        self._sliding_win.pack_dialogs(input, dialogue_ids, turns, persistence)
-        #TODO here call the tensor builder
+        curr_win = self._sliding_win.pack_dialogs(input, dialogue_ids, turns, persistence)
+        bert_input = tensor_builder.build_tensor(curr_win, device)
+        pdb.set_trace()
+        # TODO here pad the single dialogue untile max_num_Q + 1
+        # TODO and pad also the single tensor until 3*max_length_Q + 3tok
 
 
         for curr_dialogue, curr_id in zip(input, dialogue_ids):
@@ -168,6 +173,7 @@ class SlidingWindow():
         """
 
         batch_pack = []
+        window_collection = []
         for idx, (curr_dialogue, dialogue_turns) in enumerate(zip(batch, batch_turns)):
             curr_id = dialogue_ids[idx]
             window_list = []
@@ -188,11 +194,14 @@ class SlidingWindow():
                 next_dialogue_utt = batch[idx+1][0]
                 window_list.append(self.add_to_dialog_window(next_dialogue_utt))
 
+            #for DEBUG
             batch_pack.append({'id': curr_id,\
                                 'windows': window_list})
+            window_collection.append(window_list)
+
             self.sliding_window_flush()
 
-        #TODO here return !
+        return window_collection
 
 
     def add_to_dialog_window(self, utterance):

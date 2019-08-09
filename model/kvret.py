@@ -51,7 +51,8 @@ class KvretDataset(Dataset):
         Args:
             json_path (string): Path to the json file of the dataset
         """
-        self._dataset = []        
+        self._dataset = []
+        self._dialogueID_to_idx = {}
 
         with open(json_path) as json_file:
             json_data = json.load(json_file)
@@ -68,6 +69,7 @@ class KvretDataset(Dataset):
                 curr_dialog['utterances'].append(utterance['data']['utterance']) 
                 curr_dialog['turns'].append(utterance['turn'])
             self._dataset.append(curr_dialog)
+            self._dialogueID_to_idx[curr_dialog['id']] = len(self._dataset) - 1
 
 
     def __len__(self):
@@ -180,6 +182,72 @@ class KvretDataset(Dataset):
         return fetch_count, insert_count
 
 
+    def get_max_num_user_utterances(self):
 
+        curr_max = 0
+        max_dialogue_id = ''
+
+        for dialogue in self._dataset:
+            curr_user_u_count = 0
+            for t in dialogue['turns']:
+                if t == 'driver':
+                    curr_user_u_count += 1
+
+            if curr_user_u_count > curr_max:
+                curr_max = curr_user_u_count
+                max_dialogue_id = dialogue['id']
+
+        return curr_max, max_dialogue_id
+
+
+    def get_dialogues_with_subsequent_same_actor_utterances(self):
+
+        id_list = []
+        for dialogue in self._dataset:
+            previous_turn = ''
+            for t in dialogue['turns']:
+                if t == previous_turn:
+                    id_list.append(dialogue['id'])
+                    break
+                previous_turn = t
+
+        return id_list
+
+    
+    def remove_subsequent_actor_utterances(self):
+
+        """
+        To remove all the subsequent utterances of the same actor and keep only the last one
+        """
+
+        for dialogue in self._dataset:
+            previous_turn = ''
+            delimiters_l = []
+            sx_idx = -1
+            dx_idx = -1
+            for curr_idx, t in enumerate(dialogue['turns']):
+                if t == previous_turn:
+                    # set the sx index if first time for this occurence
+                    if sx_idx == -1:
+                        sx_idx = curr_idx - 1
+                    dx_idx = curr_idx
+                    # if last turn then save delimiters
+                    if curr_idx == len(dialogue['turns']) - 1:
+                        delimiters_l.append({'sx': sx_idx, 'dx': dx_idx})
+
+                else:
+                    # save delimiters and reset the sx and dx index if a range was found
+                    if sx_idx != -1 and dx_idx != -1:
+                        delimiters_l.append({'sx': sx_idx, 'dx': dx_idx})
+                        sx_idx = -1
+                        dx_idx = -1
+
+                previous_turn = t
+
+            for delim in delimiters_l:
+                del dialogue['turns'][delim['sx']:delim['dx']]
+                del dialogue['utterances'][delim['sx']:delim['dx']]
+
+            assert len(dialogue['utterances']) == len(dialogue['turns']), '[ASSERT FAILED] -- len(utt) != len(turns)'
 
     

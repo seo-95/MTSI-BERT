@@ -52,6 +52,33 @@ num sentences = 12
 id = 17fa2345-7e74-4eb9-a999-ac35ae67c9da
 
 
+------------------- MAX USER UTTERANCES PER DIALOGUE ----------------------------
+
+### TRAINING:
+num user utterances = 6
+id = 7f1d72e6-7656-4db2-a4ee-3f56567f0cfd
+
+### VALIDATION:
+num user utterances = 6
+id = 99167679-9d92-4762-b47f-084d4ac3dd96
+
+### TEST
+num user utterances = 7 (6 if subsequent removed)
+id = 38e7f22d-5914-4fee-a696-c83bbd1be451
+
+
+------------------- SUBSEQUENT SAME ACTOR UTTERANCES IN DIALOGUES ----------------------------
+
+### TRAINING:
+ids = ['ca4a934e-8a4e-48b6-90bd-fd9f20b07180', '23dc5ff5-807b-435d-b540-7917d9fdaff2', '024d1329-6a76-4aea-a806-222bdfd252f1', '3bb3d971-d069-4208-92f4-6ce2b055ed76', '6dc75860-9ae0-4ac3-b30d-32c2379afbbf', 'a006f8e9-318e-4173-abcf-7dd58d3ecb97']
+
+### VALIDATION:
+ids = ['120c9192-09e0-41d7-93d0-03c899e11571']
+
+### TEST
+ids = ['38e7f22d-5914-4fee-a696-c83bbd1be451']
+
+
 ------------------- FETCH vs INSERT ----------------------------
 
 ### TRAINING:
