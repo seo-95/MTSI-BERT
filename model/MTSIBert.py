@@ -3,9 +3,13 @@ import pdb
 from collections import deque
 
 import torch
+import torch.nn.functional as F
+
 from pytorch_transformers import BertModel, BertTokenizer
 from torch import nn
+
 from .MTSIBertInputBuilder import MTSITensorBuilder
+
 
 class MTSIBert(nn.Module):
     """Implementation of MTSI-Bert"""
@@ -15,7 +19,8 @@ class MTSIBert(nn.Module):
     _BERT_MASK_IDX = 103
 
 
-    def __init__(self, num_layers, n_labels, batch_size, pretrained, seed, window_size):
+    def __init__(self, num_layers, n_labels, batch_size, window_length, windows_per_batch,\
+                pretrained, seed, window_size):
         super(MTSIBert, self).__init__()
 
         torch.manual_seed(seed)
@@ -26,7 +31,11 @@ class MTSIBert(nn.Module):
         self.bert_hidden_dim = MTSIBert._BERT_H
         self.gru_hidden_dim = MTSIBert._BERT_H
 
+        self._window_size = window_size
         self._sliding_win = SlidingWindow(window_size)
+
+        self._window_length = window_length
+        self._windows_per_batch = windows_per_batch
 
         # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
@@ -56,41 +65,30 @@ class MTSIBert(nn.Module):
         """
 
         cls_batch = []
-        new_dialogue = False
 
+        # from single input sentence to window packed sentences
+        windows_l = self._sliding_win.pack_dialogs(input, dialogue_ids, turns, persistence)
+        bert_input = tensor_builder.build_tensor(windows_l, device)
+        # apply padding for each batch
+        for idx, batch in enumerate(bert_input):
+            # padding for the first sentence
+            batch[0] = torch.nn.utils.rnn.pad_sequence((batch[0], batch[1]), batch_first=True)[0]
+            #padding for the entire batch (dialogue)
+            residual = self._windows_per_batch - len(batch)
+            batch_padding = torch.zeros(residual, self._window_length, dtype=torch.long).to(device)
+            bert_input[idx] = torch.stack(batch) # from list to tensor
+            bert_input[idx] = torch.cat((bert_input[idx], batch_padding))
+        bert_input = torch.stack(bert_input)
 
-        # TRY
-        curr_win = self._sliding_win.pack_dialogs(input, dialogue_ids, turns, persistence)
-        bert_input = tensor_builder.build_tensor(curr_win, device)
+        if str(device) == 'cuda:0':
+            torch.cuda.empty_cache()
         pdb.set_trace()
-        # TODO here pad the single dialogue untile max_num_Q + 1
-        # TODO and pad also the single tensor until 3*max_length_Q + 3tok
 
-
-        for curr_dialogue, curr_id in zip(input, dialogue_ids):
-            for curr_sentence in curr_dialogue:
-                pdb.set_trace()
-
-                if new_dialogue:
-                    #TODO here set the EOD label and flush the window
-                    new_dialogue = False
-
-                bert_input, segments = self.add_to_dialog_window(curr_sentence, device)
-                #print(bert_input.shape)
-                hidden_states, cls_out = self._bert(input_ids = bert_input.unsqueeze(0),\
-                                                    token_type_ids = segments.unsqueeze(0))
-                # cls_out = batch_sizex768
-                cls_out = cls_out.unsqueeze(0)
-                cls_batch.append(cls_out)
-
-                #if end of dialog then flush the window
-                if self._curr_dialog_id and curr_dialog != self._curr_dialog_id:
-                    self.dialogue_input_flush()
-                    # here re-insert the last sentence (the first of the new dialogue)
-                    bert_input, _ = self.add_to_dialog_window(curr_sentence, device)
-                self._curr_dialog_id = curr_dialog
-            new_dialogue = True
-
+        hidden_states, cls_out = self._bert(input_ids = bert_input.unsqueeze(0),\
+                                            token_type_ids = segments.unsqueeze(0))
+        # cls_out = batch_sizex768
+        cls_out = cls_out.unsqueeze(0)
+        cls_batch.append(cls_out)
 
         # cls_batch is a list of list having len `B`. Interl lists length is 768
         gru_input = torch.stack(cls_batch).squeeze(1).squeeze(1).unsqueeze(0)

@@ -30,11 +30,11 @@ def train(load_checkpoint_path=None):
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
     # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS)
     badapter_train = FriendlyBert(training_set, tokenizer,\
-                                    KvretConfig._KVRET_MAX_BERT_TOKEN_PER_TRAIN_SENTENCE + 1,\
-                                    KvretConfig._KVRET_MAX_BERT_SENTENCE_PER_TRAIN_DIALOGUE+1)
+                                    KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,\
+                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+1)
     badapter_val = FriendlyBert(validation_set, tokenizer,\
-                                    KvretConfig._KVRET_MAX_BERT_TOKEN_PER_VAL_SENTENCE + 1,\
-                                    KvretConfig._KVRET_MAX_BERT_SENTENCE_PER_VAL_DIALOGUE+1)
+                                    KvretConfig._KVRET_MAX_BERT_TOKENS_PER_VAL_SENTENCE + 1,\
+                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_VAL_DIALOGUE+1)
 
     # Parameters
     params = {'batch_size': MTSIKvretConfig._BATCH_SIZE,
@@ -45,10 +45,14 @@ def train(load_checkpoint_path=None):
     validation_generator = DataLoader(badapter_val, **params)
 
     # Model preparation
-    model = MTSIBert(num_layers = MTSIKvretConfig._LAYERS_NUM,\
-                    n_labels = MTSIKvretConfig._N_LABELS,\
-                    batch_size = MTSIKvretConfig._BATCH_SIZE,\
-                    pretrained = 'bert-base-cased',\
+    model = MTSIBert(num_layers = MTSIKvretConfig._LAYERS_NUM,
+                    n_labels = MTSIKvretConfig._N_LABELS,
+                    batch_size = MTSIKvretConfig._BATCH_SIZE,
+                    # length of a single tensor: (max_tokens+1) + 3bert_tokens which are 1[CLS] and 2[SEP]
+                    window_length = 3*(KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1) + 3,
+                    # user utterances for this dialogue + first user utterance of the next
+                    windows_per_batch = KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 1,
+                    pretrained = 'bert-base-cased',
                     seed = MTSIKvretConfig._SEED,
                     window_size = MTSIKvretConfig._WINDOW_SIZE)
     if load_checkpoint_path != None:
@@ -74,6 +78,7 @@ def train(load_checkpoint_path=None):
     train_len = training_set.__len__()
     val_len = validation_set.__len__()
     best_loss = 100
+
 
     # ------------- TRAINING ------------- 
 
@@ -107,12 +112,12 @@ def train(load_checkpoint_path=None):
             train_losses.append(loss.item())
             loss.backward()
 
-            if device == 'cuda:0':
+            if str(device) == 'cuda:0':
                 occupied_mem_before = round(torch.cuda.memory_allocated()/1000000000, 2)
                 occupied_cache_before = round(torch.cuda.memory_cached()/1000000000, 2)
             
             pdb.set_trace()
-            if device == 'cuda:0':
+            if str(device) == 'cuda:0':
                 torch.cuda.empty_cache()
             #clipping_value = 5
             #torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value) TODO only on GRU
@@ -125,7 +130,7 @@ def train(load_checkpoint_path=None):
             #predictions = torch.argmax(output, dim=1)
             #train_correctly_predicted += (predictions == local_labels).sum().item()
         
-            if device == 'cuda:0':
+            if str(device) == 'cuda:0':
                 torch.cuda.empty_cache()
                 occupied_mem_after = round(torch.cuda.memory_allocated()/1000000000, 2)
                 occupied_cache_after = round(torch.cuda.memory_cached()/1000000000, 2)
@@ -245,6 +250,6 @@ def statistics(remove_subsequent_actor=False):
 
 
 if __name__ == '__main__':
-    statistics(True)
+    #statistics(True)
     #train(load_checkpoint_path='savings/2019-08-04T17:43:29.354518/state_dict.pt')
-    #train()
+    train()
