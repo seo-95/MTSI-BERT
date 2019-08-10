@@ -2,7 +2,9 @@ import datetime
 import logging
 import os
 import pdb
+import sys
 
+import GPUtil
 import numpy as np
 import torch
 from pytorch_transformers import BertTokenizer
@@ -94,15 +96,15 @@ def train(load_checkpoint_path=None):
         
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
             
-            optimizer.zero_grad()
-            
             # local_batch.size() == B x D_LEN x U_LEN
             # local_intents = B x D_LEN
             # local_actions = B x D_LEN
             local_batch = local_batch.to(device)
             local_intents = local_intents.to(device)
             local_actions = local_actions.to(device)
-            
+
+            optimizer.zero_grad()
+
             output, logits, hidden = model(local_batch, hidden,\
                                             local_turns, dialogue_ids,\
                                             tensor_builder,\
@@ -122,7 +124,6 @@ def train(load_checkpoint_path=None):
             #clipping_value = 5
             #torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value) TODO only on GRU
             optimizer.step()
-            pdb.set_trace()        
             # detach the hidden after each batch to avoid infinite gradient graph
             hidden.detach_()
 

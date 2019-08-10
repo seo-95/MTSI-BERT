@@ -80,12 +80,21 @@ class MTSIBert(nn.Module):
             bert_input[idx] = torch.cat((bert_input[idx], batch_padding))
         bert_input = torch.stack(bert_input)
 
+        attention_mask, token_type_ids = tensor_builder.build_attention_and_toktypeids(bert_input)
+        attention_mask = attention_mask.to(device)
+        token_type_ids = token_type_ids.to(device)
+
+        pdb.set_trace()
         if str(device) == 'cuda:0':
             torch.cuda.empty_cache()
         pdb.set_trace()
 
-        hidden_states, cls_out = self._bert(input_ids = bert_input.unsqueeze(0),\
-                                            token_type_ids = segments.unsqueeze(0))
+        hidden_states, cls_out = self._bert(input_ids = bert_input,
+                                            token_type_ids = token_type_ids,
+                                            attention_mask = attention_mask)
+
+
+
         # cls_out = batch_sizex768
         cls_out = cls_out.unsqueeze(0)
         cls_batch.append(cls_out)
@@ -100,7 +109,9 @@ class MTSIBert(nn.Module):
         prediction = self._softmax(logits, dim=1)
 
         return prediction, logits, hidden
-        
+
+                
+
 
 
 

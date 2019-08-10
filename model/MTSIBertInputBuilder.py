@@ -29,6 +29,14 @@ class MTSITensorBuilder(ABC):
 
         raise NotImplementedError('Abstract class method not implemented')
 
+    def get_attention_and_toktypeids(self, bert_input: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+        """
+        This method receives a tensor (probably the one produced by build_tensor) and returns the attention mask and
+        token_type_ids tensor for BERT
+        """
+
+        raise NotImplementedError('Abstract class method not implemented')
+
 
 
 class TwoSepTensorBuilder(MTSITensorBuilder):
@@ -50,7 +58,6 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
                     if idx == len(win) - 1:
                         # if only one tensor then append <t[SEP]>
                         if idx == 0:
-                            #TODO pad until 345 (114*3 +3tokens=342+3=345)
                             curr_builded_t = torch.cat((curr_builded_t, t, sep_tensor))
                         # else if last one append <[SEP]t[SEP]>
                         else:
@@ -62,3 +69,68 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
             
             res_l.append(curr_dial_l)
         return res_l
+
+
+    def build_attention_and_toktypeids(self, bert_input):
+
+        """
+        returns the attention and token_type_ids tensor for the bert input
+        """
+ 
+        tok_type_l = []
+        attention_l = []
+        for batch in bert_input:
+            curr_dialogue_tokt = []
+            curr_dialogue_attention = []
+            for win_idx, win in enumerate(batch):
+                # the first windows is composed by only one sentence
+                # in addition avoid computations for padding dialogue windows
+                curr_win_attention = self.__build_attention(win)
+                if win_idx == 0 or win[0] == 0:
+                    curr_tok_type_ids = torch.zeros(len(win))
+                    curr_dialogue_tokt.append(curr_tok_type_ids)
+                    curr_dialogue_attention.append(curr_win_attention)
+                    continue
+                # search the second and first [SEP]
+                sep_idx = None
+                for idx, _ in enumerate(win):
+                    if win[idx] == self._BERT_SEP_IDX:
+                        sep_idx = idx
+                        break
+                assert sep_idx != None, '[ASSERT FAILED] -- sep missing'
+                curr_tok_type_ids = torch.zeros(len(win))
+                
+                curr_tok_type_ids[sep_idx+1:] = 1
+                curr_dialogue_tokt.append(curr_tok_type_ids)
+                curr_dialogue_attention.append(curr_win_attention)
+            tok_type_l.append(curr_dialogue_tokt)
+            attention_l.append(curr_dialogue_attention)
+
+            # build tensor from list of lists
+            tok_type_tensor = None
+            attention_tensor = None
+            for t, a in zip(tok_type_l, attention_l):
+                tmp_tok = torch.stack(t).unsqueeze(0)
+                tmp_att = torch.stack(a).unsqueeze(0)
+                if tok_type_tensor is None and attention_tensor is None:
+                    tok_type_tensor = tmp_tok
+                    attention_tensor = tmp_att
+                else:
+                    
+                    tok_type_tensor = torch.cat((tok_type_tensor, tmp_tok), dim=0)
+                    attention_tensor = torch.cat((attention_tensor, tmp_att), dim=0)
+
+        return tok_type_tensor, attention_tensor
+
+
+    def __build_attention(self, win):
+        
+        attention_t = torch.zeros(len(win))
+        for idx, _ in enumerate(win):
+            if win[idx] != 0:
+                attention_t[idx] = 1
+
+        return attention_t
+
+
+            
