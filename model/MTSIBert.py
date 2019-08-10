@@ -66,6 +66,8 @@ class MTSIBert(nn.Module):
 
         cls_batch = []
 
+        # pre processing for obtaining window tensors
+
         # from single input sentence to window packed sentences
         windows_l = self._sliding_win.pack_dialogs(input, dialogue_ids, turns, persistence)
         bert_input = tensor_builder.build_tensor(windows_l, device)
@@ -84,14 +86,21 @@ class MTSIBert(nn.Module):
         attention_mask = attention_mask.to(device)
         token_type_ids = token_type_ids.to(device)
 
-        pdb.set_trace()
         if str(device) == 'cuda:0':
             torch.cuda.empty_cache()
-        pdb.set_trace()
 
-        hidden_states, cls_out = self._bert(input_ids = bert_input,
-                                            token_type_ids = token_type_ids,
-                                            attention_mask = attention_mask)
+        pdb.set_trace()
+        # forward
+        h, cls_o = self._bert(input_ids = bert_input,
+                        token_type_ids = token_type_ids,
+                        attention_mask = attention_mask)
+        # bert_input.shape == [B x WIN_PER_B x WIN_LENGTH]
+        for idx, _ in enumerate(bert_input):
+            pdb.set_trace()
+            hidden_states, cls_out = self._bert(input_ids = bert_input[idx],
+                                                token_type_ids = token_type_ids,
+                                                attention_mask = attention_mask)
+            pdb.set_trace()
 
 
 

@@ -110,8 +110,8 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
             tok_type_tensor = None
             attention_tensor = None
             for t, a in zip(tok_type_l, attention_l):
-                tmp_tok = torch.stack(t).unsqueeze(0)
-                tmp_att = torch.stack(a).unsqueeze(0)
+                tmp_tok = torch.stack(t).unsqueeze(0).to(dtype=torch.long)
+                tmp_att = torch.stack(a).unsqueeze(0).to(dtype=torch.long)
                 if tok_type_tensor is None and attention_tensor is None:
                     tok_type_tensor = tmp_tok
                     attention_tensor = tmp_att
