@@ -110,7 +110,7 @@ def train(load_checkpoint_path=None):
                                             tensor_builder,\
                                             device=device)
 
-            loss = loss_fn(logits, local_labels)
+            loss = loss_fn(logits, local_intents)
             train_losses.append(loss.item())
             loss.backward()
 
