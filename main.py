@@ -10,7 +10,7 @@ import torch
 from pytorch_transformers import BertTokenizer
 from torch.utils.data import DataLoader
 
-from model import (FriendlyBert, KvretConfig, KvretDataset, MTSIBert,
+from model import (MTSIAdapterDataset, KvretConfig, KvretDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
 
 _N_EPOCHS = 20
@@ -31,10 +31,10 @@ def train(load_checkpoint_path=None):
     # Bert adapter for dataset
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
     # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS)
-    badapter_train = FriendlyBert(training_set, tokenizer,\
+    badapter_train = MTSIAdapterDataset(training_set, tokenizer,\
                                     KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,\
                                     KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+1)
-    badapter_val = FriendlyBert(validation_set, tokenizer,\
+    badapter_val = MTSIAdapterDataset(validation_set, tokenizer,\
                                     KvretConfig._KVRET_MAX_BERT_TOKENS_PER_VAL_SENTENCE + 1,\
                                     KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_VAL_DIALOGUE+1)
 
@@ -108,7 +108,7 @@ def train(load_checkpoint_path=None):
             output, logits, hidden = model(local_batch, hidden,\
                                             local_turns, dialogue_ids,\
                                             tensor_builder,\
-                                            persistence = True, device=device)
+                                            device=device)
 
             loss = loss_fn(logits, local_labels)
             train_losses.append(loss.item())
@@ -121,15 +121,15 @@ def train(load_checkpoint_path=None):
             pdb.set_trace()
             if str(device) == 'cuda:0':
                 torch.cuda.empty_cache()
-            #clipping_value = 5
-            #torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value) TODO only on GRU
+            # clipping_value = 5
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value) TODO only on GRU
             optimizer.step()
             # detach the hidden after each batch to avoid infinite gradient graph
             hidden.detach_()
 
             # count correct predictions
-            #predictions = torch.argmax(output, dim=1)
-            #train_correctly_predicted += (predictions == local_labels).sum().item()
+            # predictions = torch.argmax(output, dim=1)
+            # train_correctly_predicted += (predictions == local_labels).sum().item()
         
             if str(device) == 'cuda:0':
                 torch.cuda.empty_cache()

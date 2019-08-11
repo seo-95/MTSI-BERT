@@ -50,7 +50,7 @@ class MTSIBert(nn.Module):
 
     
     def forward(self, input, hidden, turns, dialogue_ids, tensor_builder: MTSITensorBuilder,\
-                persistence=False, device='cpu'):
+                device='cpu'):
 
         """
         Input:
@@ -69,8 +69,9 @@ class MTSIBert(nn.Module):
         # pre processing for obtaining window tensors
 
         # from single input sentence to window packed sentences
-        windows_l = self._sliding_win.pack_dialogs(input, dialogue_ids, turns, persistence)
+        windows_l = self._sliding_win.pack_dialogs(input, dialogue_ids, turns)
         bert_input = tensor_builder.build_tensor(windows_l, device)
+
         # apply padding for each batch
         for idx, batch in enumerate(bert_input):
             # padding for the first sentence
@@ -82,41 +83,33 @@ class MTSIBert(nn.Module):
             bert_input[idx] = torch.cat((bert_input[idx], batch_padding))
         bert_input = torch.stack(bert_input)
 
-        attention_mask, token_type_ids = tensor_builder.build_attention_and_toktypeids(bert_input)
+        token_type_ids, attention_mask = tensor_builder.build_attention_and_toktypeids(bert_input)
         attention_mask = attention_mask.to(device)
         token_type_ids = token_type_ids.to(device)
 
         if str(device) == 'cuda:0':
             torch.cuda.empty_cache()
 
-        pdb.set_trace()
-        # forward
-        h, cls_o = self._bert(input_ids = bert_input,
-                        token_type_ids = token_type_ids,
-                        attention_mask = attention_mask)
+        bert_out = None
         # bert_input.shape == [B x WIN_PER_B x WIN_LENGTH]
         for idx, _ in enumerate(bert_input):
-            pdb.set_trace()
-            hidden_states, cls_out = self._bert(input_ids = bert_input[idx],
-                                                token_type_ids = token_type_ids,
-                                                attention_mask = attention_mask)
-            pdb.set_trace()
+            _, cls_out = self._bert(input_ids = bert_input[idx],
+                                                token_type_ids = token_type_ids[idx],
+                                                attention_mask = attention_mask[idx])
+            
+            if bert_out is None:
+                bert_cls_out = cls_out.unsqueeze(0)
+            else:
+                bert_cls_out = torch.cat((bert_out, cls_out.unsqueeze(0)), dim=0)
 
 
-
-        # cls_out = batch_sizex768
-        cls_out = cls_out.unsqueeze(0)
-        cls_batch.append(cls_out)
-
-        # cls_batch is a list of list having len `B`. Interl lists length is 768
-        gru_input = torch.stack(cls_batch).squeeze(1).squeeze(1).unsqueeze(0)
-        # gru input is a tensor of shape `1 x B x 768`
-        gru_out, hidden = self._gru(gru_input, hidden)
+        # bert_cls_out is a tensor of shape `B x W_PER_DIALOGUE x 768`
+        gru_out, hidden = self._gru(bert_cls_out, hidden)
         logits = self._classifier(gru_out)
 
         logits = logits.squeeze(0) # now logits has dim `B x 3` (batch_size * num_labels)
         prediction = self._softmax(logits, dim=1)
-
+        pdb.set_trace()
         return prediction, logits, hidden
 
                 
@@ -154,7 +147,7 @@ class SlidingWindow():
         self._curr_turn = 0
 
 
-    def pack_dialogs(self, batch, dialogue_ids, batch_turns, persistence=False, device='cpu'):
+    def pack_dialogs(self, batch, dialogue_ids, batch_turns, device='cpu'):
         """
         This method creates the dialogue input concatenating in the proper way the utterances
 
@@ -199,18 +192,13 @@ class SlidingWindow():
                 # user
                 if turn == 1:
                     window_list.append(self.add_to_dialog_window(utt))
-                else:
-                    # agent
-                    if turn == 2:
-                        # insert in the window but not use it as input (agent utterances has not to be classified)
-                        self.add_to_dialog_window(utt)
-                    # else turn == 0 is dialogue padding and we discard it
-
-            # if persistence enabled and not last dialogue:
-            if persistence and idx < len(batch) - 1:
-                # then add the first utterance of the next dialogue as last turn
-                next_dialogue_utt = batch[idx+1][0]
-                window_list.append(self.add_to_dialog_window(next_dialogue_utt))
+                # agent
+                elif turn == 2:
+                    # insert in the window but not use it as input (agent utterances has not to be classified)
+                    self.add_to_dialog_window(utt)
+                elif turn == 0:
+                    # is dialogue padding and we discard it
+                    pass
 
             #for DEBUG
             batch_pack.append({'id': curr_id,\

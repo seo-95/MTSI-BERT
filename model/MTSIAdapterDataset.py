@@ -1,18 +1,19 @@
-from pytorch_transformers import BertTokenizer
-from torch.utils.data import Dataset
-import torch
 import pdb
+import random
+
+import torch
+from pytorch_transformers import BertTokenizer
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
 
 
-
-
-
-class FriendlyBert(Dataset):
+class MTSIAdapterDataset(Dataset):
     """
-    FriendlyBert is a module implementing the adapter pattern used as intermediary between you program and the dataset when using Bert.
+    MTSIAdapterDataset is a module implementing the adapter pattern used as intermediary between you program and the dataset when using Bert.
     It performs all the operations to adapt your dataset input to the one that Bert expects. It does the tokenization, indices transformation, padding etc.
-    
+    Another important operation is the __getitem__(idx) that returns the utterances of the dataset corresponding to that dialogye concatenated with
+    the first utterance of another random dialogue.
+
     Input:
         dataset : A class extending Dataset containing you dataset
         tokenizer : The tokenizer to use
@@ -39,7 +40,11 @@ class FriendlyBert(Dataset):
 
     def __getitem__(self, idx):
         utterances, dialogue_turns, intent, action, dialogue_id = self._dataset.__getitem__(idx)
-
+        # the random dialogue can also be this one
+        random_dialogue_idx = random.randint(0, self._dataset.__len__())
+        random_utterances , other_turns, _, _, _ = self._dataset.__getitem__(random_dialogue_idx)
+        utterances.append(random_utterances[0])
+        dialogue_turns.append(other_turns[0])
         # this vector will contain list of utterances ids
         utt_ids = []
         for utt in utterances:
@@ -83,9 +88,3 @@ class FriendlyBert(Dataset):
             res.append(pad_token)
 
         return res
-
-
-
-
-        
-        
