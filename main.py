@@ -79,6 +79,10 @@ def train(load_checkpoint_path=None):
         print('active devices = '+str(torch.cuda.device_count()))
         model = nn.DataParallel(model)
     model.to(device)
+    # works on multiple GPUs when availables
+    if torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        model = nn.DataParallel(model)
 
     # this weights are needed because of unbalancing between eod and not-eod
     loss_eod_weights = torch.tensor([0.3, 1])
@@ -108,8 +112,6 @@ def train(load_checkpoint_path=None):
         train_losses = []
         train_correctly_predicted = 0
         val_correctly_predicted = 0
-        hidden = model.init_hidden()
-        hidden = hidden.to(device)
         
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
             
@@ -126,15 +128,13 @@ def train(load_checkpoint_path=None):
             local_actions = local_actions.to(device)
             eod_label = eod_label.to(device)
 
-            
-
             optimizer.zero_grad()
 
-            output, logits, hidden = model(local_batch, hidden,\
+            output, logits, hidden = model(local_batch,\
                                             local_turns, dialogue_ids,\
                                             tensor_builder,\
                                             device=device)
-
+            continue
             # TODO only with single batch. Adapt!
             # compute loss only on real dialogue (exclude padding)
             loss = loss_eod(logits.squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
@@ -173,14 +173,11 @@ def train(load_checkpoint_path=None):
         val_losses = []
         with torch.no_grad():
             model.eval()
-            hidden = model.init_hidden()
-            hidden = hidden.to(device)
             for local_batch, local_turns, local_intents, local_actions, dialogue_ids in validation_generator:
                     
                 # 0 = intra dialogue ; 1 = eod
-                eod_label = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
+                eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
                                     windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 1)
-
                 # local_batch.shape == B x D_LEN x U_LEN
                 # local_intents.shape == B
                 # local_actions.shape == B
@@ -191,15 +188,14 @@ def train(load_checkpoint_path=None):
                 eod_label = eod_label.to(device)
                     
 
-                output, logits, hidden = model(local_batch, hidden,\
+                output, logits, hidden = model(local_batch,
                                                 local_turns, dialogue_ids,\
                                                 tensor_builder,\
                                                 device=device)
-
                 if str(device) == 'cuda:0':
                     torch.cuda.empty_cache()
                 
-                loss = loss_eod(logits.squeeze(0), eod_label.squeeze(0))
+                loss = loss_eod(logits.squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
                 val_losses.append(loss.item())
                 
                 # count correct predictions
@@ -220,11 +216,11 @@ def train(load_checkpoint_path=None):
                        MTSIKvretConfig._SAVING_PATH+curr_date+'/state_dict.pt')
         
         #log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+':: TRAIN LOSS = '+str(train_mean_loss)+', TRAIN ACCURACY= '+str(train_accuracy)+'%'+\
-        #                            '\n\t\t\t || VAL LOSS = '+str(val_mean_loss)+', VAL ACCURACY= '+str(val_accuracy)+'%'
+                                    #'\n\t\t\t || VAL LOSS = '+str(val_mean_loss)+', VAL ACCURACY= '+str(val_accuracy)+'%'
         log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+':: TRAIN LOSS = '+str(train_mean_loss)+\
                                                                 '\n\t\t\t || VAL LOSS = '+str(val_mean_loss)
         print(log_str)
-        logging.info(log_str)
+        #logging.info(log_str)
 
 
 

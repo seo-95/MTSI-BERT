@@ -49,7 +49,7 @@ class MTSIBert(nn.Module):
 
 
     
-    def forward(self, input, hidden, turns, dialogue_ids, tensor_builder: MTSITensorBuilder,\
+    def forward(self, input, turns, dialogue_ids, tensor_builder: MTSITensorBuilder,\
                 device='cpu'):
 
         """
@@ -63,7 +63,8 @@ class MTSIBert(nn.Module):
             prediction : tensor having shape `B x NUM_CLASSES`
             hidden : tensor having shape `NUM_LAYERS x 1 X 768`
         """
-
+        hidden = self.init_hidden()
+        hidden = hidden.to(device)
         # pre processing for obtaining window tensors
 
         # from single input sentence to window packed sentences
@@ -77,9 +78,9 @@ class MTSIBert(nn.Module):
             batch[0] = torch.nn.utils.rnn.pad_sequence((batch[0], batch[1]), batch_first=True)[0]
             #padding for the entire batch (dialogue)
             residual = self._windows_per_batch - len(batch)
-            batch_padding = torch.zeros(residual, self._window_length, dtype=torch.long).to(device)
+            dialogue_padding = torch.zeros(residual, self._window_length, dtype=torch.long).to(device)
             bert_input[idx] = torch.stack(batch) # from list to tensor
-            bert_input[idx] = torch.cat((bert_input[idx], batch_padding))
+            bert_input[idx] = torch.cat((bert_input[idx], dialogue_padding))
         bert_input = torch.stack(bert_input)
 
 
