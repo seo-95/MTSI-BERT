@@ -60,11 +60,14 @@ class KvretDataset(Dataset):
         get_action = lambda items : 'insert' if items is None else 'fetch'
 
         for t_sample in json_data:
+            if len(t_sample['dialogue']) == 0:
+                continue
             curr_dialog = {'id': t_sample['scenario']['uuid'],\
                             'utterances': [],\
                             'turns': [],\
                             'intent': t_sample['scenario']['task']['intent'],\
                             'kb_action': get_action(t_sample['scenario']['kb']['items'])}
+
             for utterance in t_sample['dialogue']:
                 curr_dialog['utterances'].append(utterance['data']['utterance']) 
                 curr_dialog['turns'].append(utterance['turn'])
@@ -78,7 +81,10 @@ class KvretDataset(Dataset):
 
     def __getitem__(self, idx):
         
-        utterances = self._dataset[idx]['utterances']
+        try:
+            utterances = self._dataset[idx]['utterances']
+        except:
+            pdb.set_trace()
         turns_id = []
         dialogue_turns = self._dataset[idx]['turns']
         for t in dialogue_turns:
@@ -86,7 +92,7 @@ class KvretDataset(Dataset):
         intent = self._dataset[idx]['intent']
         action = self._dataset[idx]['kb_action']
         dialogue_id = self._dataset[idx]['id']
-
+        
         return utterances, turns_id,\
                             KvretDataset._INTENT_TO_IDX[intent],\
                             KvretDataset._ACTION_TO_IDX[action],\

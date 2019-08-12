@@ -15,6 +15,20 @@ from model import (MTSIAdapterDataset, KvretConfig, KvretDataset, MTSIBert,
 
 _N_EPOCHS = 20
 
+
+def get_eod(turns, win_size, windows_per_dialogue):
+    
+    res = torch.zeros((len(turns), windows_per_dialogue), dtype=torch.long)
+    user_count = 0
+    for idx, curr_dial in enumerate(turns):
+        for t in curr_dial:
+            if t == 1:
+                user_count += 1
+        res[idx][user_count-1] = 1
+
+    return res, user_count-1
+
+
 def train(load_checkpoint_path=None):
 
     # CUDA for PyTorch
@@ -30,13 +44,14 @@ def train(load_checkpoint_path=None):
 
     # Bert adapter for dataset
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
-    # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS)
+    # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS) + 1 (random last sentence from other)
     badapter_train = MTSIAdapterDataset(training_set, tokenizer,\
                                     KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,\
-                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+1)
+                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+2)
+    # for validation keep using the train max tokens for model compatibility
     badapter_val = MTSIAdapterDataset(validation_set, tokenizer,\
-                                    KvretConfig._KVRET_MAX_BERT_TOKENS_PER_VAL_SENTENCE + 1,\
-                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_VAL_DIALOGUE+1)
+                                    KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,\
+                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_VAL_DIALOGUE+2)
 
     # Parameters
     params = {'batch_size': MTSIKvretConfig._BATCH_SIZE,
@@ -53,7 +68,7 @@ def train(load_checkpoint_path=None):
                     # length of a single tensor: (max_tokens+1) + 3bert_tokens which are 1[CLS] and 2[SEP]
                     window_length = 3*(KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1) + 3,
                     # user utterances for this dialogue + first user utterance of the next
-                    windows_per_batch = KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 1,
+                    windows_per_batch = KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2,
                     pretrained = 'bert-base-cased',
                     seed = MTSIKvretConfig._SEED,
                     window_size = MTSIKvretConfig._WINDOW_SIZE)
@@ -65,7 +80,9 @@ def train(load_checkpoint_path=None):
         model = nn.DataParallel(model)
     model.to(device)
 
-    loss_fn = torch.nn.CrossEntropyLoss()
+    # this weights are needed because of unbalancing between eod and not-eod
+    loss_eod_weights = torch.tensor([0.3, 1])
+    loss_eod = torch.nn.CrossEntropyLoss(weight=loss_eod_weights).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE)
     
     # creates the directory for the checkpoints     
@@ -96,12 +113,20 @@ def train(load_checkpoint_path=None):
         
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
             
-            # local_batch.size() == B x D_LEN x U_LEN
-            # local_intents = B x D_LEN
-            # local_actions = B x D_LEN
+            # 0 = intra dialogue ; 1 = eod
+            eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
+                                windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
+            
+            # local_batch.shape == B x D_LEN x U_LEN
+            # local_intents.shape == B
+            # local_actions.shape == B
+            # local_eod_label.shape == B x D_PER_WIN
             local_batch = local_batch.to(device)
             local_intents = local_intents.to(device)
             local_actions = local_actions.to(device)
+            eod_label = eod_label.to(device)
+
+            
 
             optimizer.zero_grad()
 
@@ -110,15 +135,16 @@ def train(load_checkpoint_path=None):
                                             tensor_builder,\
                                             device=device)
 
-            loss = loss_fn(logits, local_intents)
+            # TODO only with single batch. Adapt!
+            # compute loss only on real dialogue (exclude padding)
+            loss = loss_eod(logits.squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
             train_losses.append(loss.item())
             loss.backward()
 
-            if str(device) == 'cuda:0':
-                occupied_mem_before = round(torch.cuda.memory_allocated()/1000000000, 2)
-                occupied_cache_before = round(torch.cuda.memory_cached()/1000000000, 2)
+            #if str(device) == 'cuda:0':
+                #occupied_mem_before = round(torch.cuda.memory_allocated()/1000000000, 2)
+                #occupied_cache_before = round(torch.cuda.memory_cached()/1000000000, 2)
             
-            pdb.set_trace()
             if str(device) == 'cuda:0':
                 torch.cuda.empty_cache()
             # clipping_value = 5
@@ -133,26 +159,13 @@ def train(load_checkpoint_path=None):
         
             if str(device) == 'cuda:0':
                 torch.cuda.empty_cache()
-                occupied_mem_after = round(torch.cuda.memory_allocated()/1000000000, 2)
-                occupied_cache_after = round(torch.cuda.memory_cached()/1000000000, 2)
-                print('##[BEFORE] : MEM='+str(occupied_mem_before)+' CACHE='+str(occupied_cache_before)+'\n\t'+\
-                        '[AFTER] : MEM='+str(occupied_mem_after)+' CACHE='+str(occupied_cache_after))
+                #occupied_mem_after = round(torch.cuda.memory_allocated()/1000000000, 2)
+                #occupied_cache_after = round(torch.cuda.memory_cached()/1000000000, 2)
+                #print('##[BEFORE] : MEM='+str(occupied_mem_before)+' CACHE='+str(occupied_cache_before)+'\n\t'+\
+                        #'[AFTER] : MEM='+str(occupied_mem_after)+' CACHE='+str(occupied_cache_after))
             
             
         #end of epoch
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -162,20 +175,36 @@ def train(load_checkpoint_path=None):
             model.eval()
             hidden = model.init_hidden()
             hidden = hidden.to(device)
-            for local_batch, local_labels, dialogue_ids in validation_generator:
+            for local_batch, local_turns, local_intents, local_actions, dialogue_ids in validation_generator:
                     
-                    local_batch = local_batch.to(device)
-                    local_labels = local_labels.to(device)
+                # 0 = intra dialogue ; 1 = eod
+                eod_label = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
+                                    windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 1)
+
+                # local_batch.shape == B x D_LEN x U_LEN
+                # local_intents.shape == B
+                # local_actions.shape == B
+                # local_eod_label.shape == B x D_PER_WIN
+                local_batch = local_batch.to(device)
+                local_intents = local_intents.to(device)
+                local_actions = local_actions.to(device)
+                eod_label = eod_label.to(device)
                     
-                    output, logits, hidden = model(local_batch, hidden, turns, dialogue_ids, device)
+
+                output, logits, hidden = model(local_batch, hidden,\
+                                                local_turns, dialogue_ids,\
+                                                tensor_builder,\
+                                                device=device)
+
+                if str(device) == 'cuda:0':
                     torch.cuda.empty_cache()
-                    
-                    loss = loss_fn(logits, local_labels)
-                    val_losses.append(loss.item())
-                    
-                    # count correct predictions
-                    #predictions = torch.argmax(output, dim=1)
-                    #val_correctly_predicted += (predictions == local_labels).sum().item()
+                
+                loss = loss_eod(logits.squeeze(0), eod_label.squeeze(0))
+                val_losses.append(loss.item())
+                
+                # count correct predictions
+                #predictions = torch.argmax(output, dim=1)
+                #val_correctly_predicted += (predictions == local_labels).sum().item()
 
 
         #train_accuracy = round(train_correctly_predicted/train_len * 100, 2)

@@ -43,8 +43,8 @@ class MTSIBert(nn.Module):
                             hidden_size = self.gru_hidden_dim,\
                             num_layers = self.num_layers,\
                             batch_first = True)
-        self._classifier = nn.Linear(in_features = self.gru_hidden_dim,\
-                                out_features = self.n_labels)
+        self._eod_classifier = nn.Linear(in_features = self.gru_hidden_dim,\
+                                out_features = 2)
         self._softmax = nn.functional.softmax        
 
 
@@ -64,8 +64,6 @@ class MTSIBert(nn.Module):
             hidden : tensor having shape `NUM_LAYERS x 1 X 768`
         """
 
-        cls_batch = []
-
         # pre processing for obtaining window tensors
 
         # from single input sentence to window packed sentences
@@ -74,6 +72,7 @@ class MTSIBert(nn.Module):
 
         # apply padding for each batch
         for idx, batch in enumerate(bert_input):
+            eod_idx = len(bert_input[idx])
             # padding for the first sentence
             batch[0] = torch.nn.utils.rnn.pad_sequence((batch[0], batch[1]), batch_first=True)[0]
             #padding for the entire batch (dialogue)
@@ -83,6 +82,7 @@ class MTSIBert(nn.Module):
             bert_input[idx] = torch.cat((bert_input[idx], batch_padding))
         bert_input = torch.stack(bert_input)
 
+
         token_type_ids, attention_mask = tensor_builder.build_attention_and_toktypeids(bert_input)
         attention_mask = attention_mask.to(device)
         token_type_ids = token_type_ids.to(device)
@@ -90,26 +90,29 @@ class MTSIBert(nn.Module):
         if str(device) == 'cuda:0':
             torch.cuda.empty_cache()
 
-        bert_out = None
-        # bert_input.shape == [B x WIN_PER_B x WIN_LENGTH]
-        for idx, _ in enumerate(bert_input):
-            _, cls_out = self._bert(input_ids = bert_input[idx],
-                                                token_type_ids = token_type_ids[idx],
-                                                attention_mask = attention_mask[idx])
-            
-            if bert_out is None:
-                bert_cls_out = cls_out.unsqueeze(0)
-            else:
-                bert_cls_out = torch.cat((bert_out, cls_out.unsqueeze(0)), dim=0)
-
+        # only for PC debug: BERT too computationally expensive on cpu and out of mem on GPU    
+        if str(device) == 'cpu':
+            bert_cls_out = torch.randn((self.batch_size, self._windows_per_batch, 768))
+        else:
+            bert_out = None
+            # bert_input.shape == [B x WIN_PER_B x WIN_LENGTH]
+            for idx, _ in enumerate(bert_input):
+                _, cls_out = self._bert(input_ids = bert_input[idx],
+                                                    token_type_ids = token_type_ids[idx],
+                                                    attention_mask = attention_mask[idx])
+                
+                if bert_out is None:
+                    bert_cls_out = cls_out.unsqueeze(0)
+                else:
+                    bert_cls_out = torch.cat((bert_out, cls_out.unsqueeze(0)), dim=0)
 
         # bert_cls_out is a tensor of shape `B x W_PER_DIALOGUE x 768`
         gru_out, hidden = self._gru(bert_cls_out, hidden)
-        logits = self._classifier(gru_out)
+        logits = self._eod_classifier(gru_out)
 
-        logits = logits.squeeze(0) # now logits has dim `B x 3` (batch_size * num_labels)
+        #logits = logits.squeeze(0) # now logits has dim `B x 3` (batch_size * num_labels)
         prediction = self._softmax(logits, dim=1)
-        pdb.set_trace()
+
         return prediction, logits, hidden
 
                 
@@ -222,45 +225,6 @@ class SlidingWindow():
                 self._curr_window.append(utterance)
 
         return list(self._curr_window)
-                
-
-
-
-
-
-    """
-
-        # ------------- OLD ----------------
-
-
-        has_more_sentences = False
-        # append [CLS] at the beginning
-        if(len(self._curr_dialog_window) == 0):
-            self._curr_dialog_window = torch.tensor(MTSIBert._BERT_CLS_IDX).reshape(1).to(device)
-        else:
-            has_more_sentences = True
-            # remove the old separator
-            self._curr_dialog_window = self._curr_dialog_window[self._curr_dialog_window != MTSIBert._BERT_SEP_IDX]
-            #append the new separator
-            self._curr_dialog_window = torch.cat((self._curr_dialog_window,\
-                                                 torch.tensor(MTSIBert._BERT_SEP_IDX).reshape(1).to(device)))
-
-        self._curr_dialog_window = torch.cat((self._curr_dialog_window, input))
-
-        #remove padding
-        self._curr_dialog_window = self._curr_dialog_window[self._curr_dialog_window != 0]
-
-        #compute the segment for one or multiple sentences
-        segment = torch.zeros(len(self._curr_dialog_window), dtype=torch.long).to(device)
-        if has_more_sentences:
-            for idx in reversed(range(len(self._curr_dialog_window))): #TODO avoid to overwrite pos 0
-                if self._curr_dialog_window[idx] != MTSIBert._BERT_SEP_IDX:
-                    segment[idx] = 1 
-                else:
-                    break
-        
-        return self._curr_dialog_window, segment
-    """
 
 
     def sliding_window_flush(self):

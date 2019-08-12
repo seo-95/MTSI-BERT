@@ -40,11 +40,16 @@ class MTSIAdapterDataset(Dataset):
 
     def __getitem__(self, idx):
         utterances, dialogue_turns, intent, action, dialogue_id = self._dataset.__getitem__(idx)
+        # copy the list to avoid modifications happen also in the internal dataset
+        utterances = list(utterances)
+        dialogue_turns = list(dialogue_turns)
+        
         # the random dialogue can also be this one
-        random_dialogue_idx = random.randint(0, self._dataset.__len__())
+        random_dialogue_idx = random.randint(0, self._dataset.__len__()-1)
         random_utterances , other_turns, _, _, _ = self._dataset.__getitem__(random_dialogue_idx)
         utterances.append(random_utterances[0])
         dialogue_turns.append(other_turns[0])
+
         # this vector will contain list of utterances ids
         utt_ids = []
         for utt in utterances:
@@ -64,9 +69,9 @@ class MTSIAdapterDataset(Dataset):
             utt_ids = utt_ids + [[0]*self._max_sequence_len]*residual
             dialogue_turns = dialogue_turns + [0]*residual
 
-        assert len(utt_ids) == self._max_dialogue_len, '[ASSERT FAILED] -- wrong dialogue len of ' + len(utt_ids)
-        assert len(utt_ids[0]) == self._max_sequence_len, '[ASSERT FAILED] -- wrong sentence len of ' + len(utt_ids[0])
-
+        assert len(utt_ids) == self._max_dialogue_len, '[ASSERT FAILED] -- wrong dialogue len of ' + str(len(utt_ids))
+        assert len(utt_ids[0]) == self._max_sequence_len, '[ASSERT FAILED] -- wrong sentence len of ' + str(len(utt_ids[0]))
+        
         return torch.tensor(utt_ids), torch.tensor(dialogue_turns), intent, action, dialogue_id
 
 
