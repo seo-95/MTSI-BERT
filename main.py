@@ -63,10 +63,10 @@ def train(load_checkpoint_path=None):
 
     # Model preparation
     model = MTSIBert(num_layers = MTSIKvretConfig._LAYERS_NUM,
-                    n_labels = MTSIKvretConfig._N_LABELS,
+                    n_intents = MTSIKvretConfig._N_INTENTS,
                     batch_size = MTSIKvretConfig._BATCH_SIZE,
                     # length of a single tensor: (max_tokens+1) + 3bert_tokens which are 1[CLS] and 2[SEP]
-                    window_length = 3*(KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1) + 3,
+                    window_length = KvretConfig._KVRET_MAX_BERT_TOKENS_PER_WINDOWS + 1,
                     # user utterances for this dialogue + first user utterance of the next
                     windows_per_batch = KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2,
                     pretrained = 'bert-base-cased',
@@ -134,7 +134,7 @@ def train(load_checkpoint_path=None):
                                             local_turns, dialogue_ids,\
                                             tensor_builder,\
                                             device=device)
-            continue
+
             # TODO only with single batch. Adapt!
             # compute loss only on real dialogue (exclude padding)
             loss = loss_eod(logits.squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])

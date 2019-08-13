@@ -29,7 +29,7 @@ class MTSITensorBuilder(ABC):
 
         raise NotImplementedError('Abstract class method not implemented')
 
-    def get_attention_and_toktypeids(self, bert_input: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+    def get_attention_and_segment(self, bert_input: torch.Tensor) -> (torch.Tensor, torch.Tensor):
         """
         This method receives a tensor (probably the one produced by build_tensor) and returns the attention mask and
         token_type_ids tensor for BERT
@@ -55,82 +55,68 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
                 # at first append [CLS]
                 curr_builded_t = torch.tensor(MTSITensorBuilder._BERT_CLS_IDX).reshape(1).to(device)
                 for idx, t in enumerate(win):
+                    # remove padding for each utterance
+                    no_padded = self.__remove_padding(t)
                     if idx == len(win) - 1:
                         # if only one tensor then append <t[SEP]>
                         if idx == 0:
-                            curr_builded_t = torch.cat((curr_builded_t, t, sep_tensor))
+                            curr_builded_t = torch.cat((curr_builded_t, no_padded, sep_tensor))
                         # else if last one append <[SEP]t[SEP]>
                         else:
                             curr_builded_t = torch.cat((curr_builded_t, sep_tensor,\
-                                            t, sep_tensor))
+                                            no_padded, sep_tensor))
                     else:
-                        curr_builded_t = torch.cat((curr_builded_t, t))
+                        curr_builded_t = torch.cat((curr_builded_t, no_padded))
+                
+                # for count windows length
+                #with open('booh.txt', 'a') as f:
+                #    f.write(str(len(curr_builded_t))+'\n')
+
+
                 curr_dial_l.append(curr_builded_t)
-            
             res_l.append(curr_dial_l)
         return res_l
 
 
-    def build_attention_and_toktypeids(self, bert_input):
+    def __remove_padding(self, t):
+        return t[t!=0]
 
-        """
-        returns the attention and token_type_ids tensor for the bert input
-        """
- 
-        tok_type_l = []
-        attention_l = []
+
+    def build_attention_and_segment(self, bert_input):
+
+        attention_mask = []
+        segment_mask = []
+
         for batch in bert_input:
-            curr_dialogue_tokt = []
-            curr_dialogue_attention = []
-            for win_idx, win in enumerate(batch):
-                # the first windows is composed by only one sentence
-                # in addition avoid computations for padding dialogue windows
-                curr_win_attention = self.__build_attention(win)
-                if win_idx == 0 or win[0] == 0:
-                    curr_tok_type_ids = torch.zeros(len(win))
-                    curr_dialogue_tokt.append(curr_tok_type_ids)
-                    curr_dialogue_attention.append(curr_win_attention)
-                    continue
-                # search the second and first [SEP]
-                sep_idx = None
-                for idx, _ in enumerate(win):
-                    if win[idx] == self._BERT_SEP_IDX:
-                        sep_idx = idx
-                        break
-                assert sep_idx != None, '[ASSERT FAILED] -- sep missing'
-                curr_tok_type_ids = torch.zeros(len(win))
+            curr_att = []
+            curr_seg = []
+            for idx, t in enumerate(batch):
+
+                # build attention
+                tmp_attention = torch.zeros(len(t))
+                non_zero = len(t[t!=0])
+                tmp_attention[:non_zero] = 1
+
+                # build segment
+                tmp_segment = torch.zeros(len(t))
+                # if is the first window then we have only 1 sentence. Avoid also dialogue padding tensors
+                if idx != 0 and t[0] != 0:
+                    first_segment_end = self.__find_first_occurrence(t, MTSITensorBuilder._BERT_SEP_IDX)
+                    tmp_segment[first_segment_end+1:] = 1
                 
-                curr_tok_type_ids[sep_idx+1:] = 1
-                curr_dialogue_tokt.append(curr_tok_type_ids)
-                curr_dialogue_attention.append(curr_win_attention)
-            tok_type_l.append(curr_dialogue_tokt)
-            attention_l.append(curr_dialogue_attention)
-
-            # build tensor from list of lists
-            tok_type_tensor = None
-            attention_tensor = None
-            for t, a in zip(tok_type_l, attention_l):
-                tmp_tok = torch.stack(t).unsqueeze(0).to(dtype=torch.long)
-                tmp_att = torch.stack(a).unsqueeze(0).to(dtype=torch.long)
-                if tok_type_tensor is None and attention_tensor is None:
-                    tok_type_tensor = tmp_tok
-                    attention_tensor = tmp_att
-                else:
-                    
-                    tok_type_tensor = torch.cat((tok_type_tensor, tmp_tok), dim=0)
-                    attention_tensor = torch.cat((attention_tensor, tmp_att), dim=0)
-
-        return tok_type_tensor, attention_tensor
-
-
-    def __build_attention(self, win):
+                curr_att.append(tmp_attention)
+                curr_seg.append(tmp_segment)
+            attention_mask.append(torch.stack(curr_att))
+            segment_mask.append(torch.stack(curr_seg))
         
-        attention_t = torch.zeros(len(win))
-        for idx, _ in enumerate(win):
-            if win[idx] != 0:
-                attention_t[idx] = 1
+        return torch.stack(attention_mask), torch.stack(segment_mask)
 
-        return attention_t
+
+    def __find_first_occurrence(self, t, token):
+        for idx, v in enumerate(t):
+            if v == token:
+                return idx
+
 
 
             

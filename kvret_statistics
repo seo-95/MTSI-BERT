@@ -37,6 +37,18 @@ num sentences = In San Jose, it is expected to be between 40-60F Monday and Tues
 id = 9724e6ff-8938-4bbe-bbd9-a6deba5debd4
 
 
+------------------- MAX TOKENS PER WINDOW (size=3) [corresponds to the window length] ----------------------------
+# [CLS] and [SEP] already in the count
+
+### TRAINING: 125
+
+### VALIDATION: 129
+
+### TEST: 78
+
+
+
+
 ------------------- MAX SENTENCES PER DIALOGUE ----------------------------
 
 ### TRAINING:

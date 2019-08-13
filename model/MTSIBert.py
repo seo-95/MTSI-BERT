@@ -19,14 +19,14 @@ class MTSIBert(nn.Module):
     _BERT_MASK_IDX = 103
 
 
-    def __init__(self, num_layers, n_labels, batch_size, window_length, windows_per_batch,\
+    def __init__(self, num_layers, n_intents, batch_size, window_length, windows_per_batch,\
                 pretrained, seed, window_size):
         super(MTSIBert, self).__init__()
 
         torch.manual_seed(seed)
 
         self.num_layers = num_layers
-        self.n_labels = n_labels
+        self.n_intents = n_intents
         self.batch_size = batch_size
         self.bert_hidden_dim = MTSIBert._BERT_H
         self.gru_hidden_dim = MTSIBert._BERT_H
@@ -39,13 +39,23 @@ class MTSIBert(nn.Module):
 
         # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
+        # gru for eod classification
         self._gru = nn.GRU(input_size = self.bert_hidden_dim,\
                             hidden_size = self.gru_hidden_dim,\
                             num_layers = self.num_layers,\
                             batch_first = True)
         self._eod_classifier = nn.Linear(in_features = self.gru_hidden_dim,\
                                 out_features = 2)
-        self._softmax = nn.functional.softmax        
+        # encoder for action and intent classification (only on the first user utterance)
+        self._sentence_encoder = nn.Sequential(
+                                    nn.Linear(self.bert_hidden_dim, 500),
+                                    nn.ReLU(),
+                                    nn.Linear(500, 300),
+                                    nn.ReLU(),
+                                )
+        self._intent_classifier = nn.Linear(300, self.n_intents)
+        self._action_classifier = nn.Linear(300, 2)
+        self._softmax = nn.functional.softmax
 
 
     
@@ -69,24 +79,27 @@ class MTSIBert(nn.Module):
 
         # from single input sentence to window packed sentences
         windows_l = self._sliding_win.pack_dialogs(input, dialogue_ids, turns)
+        # returns a list of tensors to be padded and aggregated
         bert_input = tensor_builder.build_tensor(windows_l, device)
 
-        # apply padding for each batch
-        for idx, batch in enumerate(bert_input):
-            eod_idx = len(bert_input[idx])
-            # padding for the first sentence
-            batch[0] = torch.nn.utils.rnn.pad_sequence((batch[0], batch[1]), batch_first=True)[0]
+        # apply padding for each batch (both single utterance and dialogue padding)
+        for batch_idx, _ in enumerate(bert_input):
+            for win_idx, _ in enumerate(bert_input[batch_idx]):
+                win_residual = self._window_length - len(bert_input[batch_idx][win_idx])
+                assert win_residual > 0, '[ASSERT FAILED] -- max window length not enough'
+                bert_input[batch_idx][win_idx] = F.pad(bert_input[batch_idx][win_idx], (0, win_residual), 'constant', 0)
+            # now shape will be ? x W_LENGTH : dialogue padding already to perform
+            bert_input[batch_idx] = torch.stack(bert_input[batch_idx])
             #padding for the entire batch (dialogue)
-            residual = self._windows_per_batch - len(batch)
-            dialogue_padding = torch.zeros(residual, self._window_length, dtype=torch.long).to(device)
-            bert_input[idx] = torch.stack(batch) # from list to tensor
-            bert_input[idx] = torch.cat((bert_input[idx], dialogue_padding))
+            batch_residual = self._windows_per_batch - len(bert_input[batch_idx])
+            # now shape will be W_P_DIALOGUE x W_LENGTH 
+            bert_input[batch_idx] = F.pad(bert_input[batch_idx], (0, 0, 0, batch_residual), 'constant', 0)
         bert_input = torch.stack(bert_input)
-
-
-        token_type_ids, attention_mask = tensor_builder.build_attention_and_toktypeids(bert_input)
+        
+        attention_mask, segment_mask = tensor_builder.build_attention_and_segment(bert_input)
         attention_mask = attention_mask.to(device)
-        token_type_ids = token_type_ids.to(device)
+        segment_mask = segment_mask.to(device)
+        pdb.set_trace()
 
         if str(device) == 'cuda:0':
             torch.cuda.empty_cache()
@@ -94,27 +107,35 @@ class MTSIBert(nn.Module):
         # only for PC debug: BERT too computationally expensive on cpu and out of mem on GPU    
         if str(device) == 'cpu':
             bert_cls_out = torch.randn((self.batch_size, self._windows_per_batch, 768))
+            bert_hiddens = torch.randn((self._windows_per_batch, self._window_length, 768))
         else:
             bert_out = None
             # bert_input.shape == [B x WIN_PER_B x WIN_LENGTH]
             for idx, _ in enumerate(bert_input):
-                _, cls_out = self._bert(input_ids = bert_input[idx],
-                                                    token_type_ids = token_type_ids[idx],
+                bert_hiddens, cls_out = self._bert(input_ids = bert_input[idx],
+                                                    segment_mask = segment_mask[idx],
                                                     attention_mask = attention_mask[idx])
                 
                 if bert_out is None:
                     bert_cls_out = cls_out.unsqueeze(0)
                 else:
                     bert_cls_out = torch.cat((bert_out, cls_out.unsqueeze(0)), dim=0)
-
+        pdb.set_trace()
         # bert_cls_out is a tensor of shape `B x W_PER_DIALOGUE x 768`
         gru_out, hidden = self._gru(bert_cls_out, hidden)
-        logits = self._eod_classifier(gru_out)
+        logits_eod = self._eod_classifier(gru_out)
+
+
+        # here compute average and send to sentence encoder
+        # bert_hiddens has dimension WIN_PER_DIALOGUE x WIN_LENGTH x 768
+        # sentence_avg has dimension WIN_PER_DIALOGUE x WIN_LENGTH
+        sentence_avg = compute_average(bert_hiddens, attention_mask)
+        sentence_out = self._sentence_encoder(sentence_avg)
 
         #logits = logits.squeeze(0) # now logits has dim `B x 3` (batch_size * num_labels)
-        prediction = self._softmax(logits, dim=1)
+        prediction_eod = self._softmax(logits_eod, dim=1)
 
-        return prediction, logits, hidden
+        return prediction_eod, logits_eod, hidden
 
                 
 

@@ -25,14 +25,16 @@ class KvretConfig():
     _KVRET_MAX_USER_SENTENCES_PER_VALIDATION_DIALOGUE = 6
     _KVRET_MAX_USER_SENTENCES_PER_TEST_DIALOGUE = 6 # 7 if subsequent utterances not removed
 
+    _KVRET_MAX_BERT_TOKENS_PER_WINDOWS = 129 # see kvret statistics
+
 
 class MTSIKvretConfig:
     """
     MTSI-Bert model parameters for Kvret dataset
     """
-    _N_LABELS = 3 # number of intents
+    _N_INTENTS = 3 # number of intents
     _BATCH_SIZE = 1
-    _LAYERS_NUM = 10
+    _LAYERS_NUM = 50
     _SEED = 1 # for reroducibility of results
     _LEARNING_RATE = 0.005
     _WINDOW_SIZE = 3 # tipically odd number [Q(t-1), R(t-1), Q(t)]
