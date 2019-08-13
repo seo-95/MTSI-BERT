@@ -44,37 +44,34 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
     Result shape:
         [CLS] T(1) T(2) ... T(n-1) [SEP] T(n) [SEP]
     """
-    def build_tensor(self, dialogue_windows_list, device):
+    def build_tensor(self, windows_list, device):
 
         # the result will be a list of lists with a number of entries equal to the number of different dialogues 
         res_l = []
         sep_tensor = torch.tensor(MTSITensorBuilder._BERT_SEP_IDX).reshape(1).to(device)
-        for dialogue_idx, win_list in enumerate(dialogue_windows_list):
-            curr_dial_l = []
-            for win in win_list:
-                # at first append [CLS]
-                curr_builded_t = torch.tensor(MTSITensorBuilder._BERT_CLS_IDX).reshape(1).to(device)
-                for idx, t in enumerate(win):
-                    # remove padding for each utterance
-                    no_padded = self.__remove_padding(t)
-                    if idx == len(win) - 1:
-                        # if only one tensor then append <t[SEP]>
-                        if idx == 0:
-                            curr_builded_t = torch.cat((curr_builded_t, no_padded, sep_tensor))
-                        # else if last one append <[SEP]t[SEP]>
-                        else:
-                            curr_builded_t = torch.cat((curr_builded_t, sep_tensor,\
-                                            no_padded, sep_tensor))
+
+        for win in windows_list:
+            # at first append [CLS]
+            curr_builded_t = torch.tensor(MTSITensorBuilder._BERT_CLS_IDX).reshape(1).to(device)
+            for idx, t in enumerate(win):
+                # remove padding for each utterance
+                no_padded = self.__remove_padding(t)
+                if idx == len(win) - 1:
+                    # if only one tensor then append <t[SEP]>
+                    if idx == 0:
+                        curr_builded_t = torch.cat((curr_builded_t, no_padded, sep_tensor))
+                    # else if last one append <[SEP]t[SEP]>
                     else:
-                        curr_builded_t = torch.cat((curr_builded_t, no_padded))
-                
-                # for count windows length
-                #with open('booh.txt', 'a') as f:
-                #    f.write(str(len(curr_builded_t))+'\n')
+                        curr_builded_t = torch.cat((curr_builded_t, sep_tensor,\
+                                        no_padded, sep_tensor))
+                else:
+                    curr_builded_t = torch.cat((curr_builded_t, no_padded))
+            
+            # for count windows length
+            #with open('booh.txt', 'a') as f:
+            #    f.write(str(len(curr_builded_t))+'\n')
+            res_l.append(curr_builded_t)
 
-
-                curr_dial_l.append(curr_builded_t)
-            res_l.append(curr_dial_l)
         return res_l
 
 
@@ -87,28 +84,23 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
         attention_mask = []
         segment_mask = []
 
-        for batch in bert_input:
-            curr_att = []
-            curr_seg = []
-            for idx, t in enumerate(batch):
+        for idx, t in enumerate(bert_input):
 
-                # build attention
-                tmp_attention = torch.zeros(len(t))
-                non_zero = len(t[t!=0])
-                tmp_attention[:non_zero] = 1
+            # build attention
+            tmp_attention = torch.zeros(len(t))
+            non_zero = len(t[t!=0])
+            tmp_attention[:non_zero] = 1
 
-                # build segment
-                tmp_segment = torch.zeros(len(t))
-                # if is the first window then we have only 1 sentence. Avoid also dialogue padding tensors
-                if idx != 0 and t[0] != 0:
-                    first_segment_end = self.__find_first_occurrence(t, MTSITensorBuilder._BERT_SEP_IDX)
-                    tmp_segment[first_segment_end+1:] = 1
-                
-                curr_att.append(tmp_attention)
-                curr_seg.append(tmp_segment)
-            attention_mask.append(torch.stack(curr_att))
-            segment_mask.append(torch.stack(curr_seg))
-        
+            # build segment
+            tmp_segment = torch.zeros(len(t))
+            # if is the first window then we have only 1 sentence. Avoid also dialogue padding tensors
+            if idx != 0 and t[0] != 0:
+                first_segment_end = self.__find_first_occurrence(t, MTSITensorBuilder._BERT_SEP_IDX)
+                tmp_segment[first_segment_end+1:] = 1
+
+            attention_mask.append(tmp_attention)
+            segment_mask.append(tmp_segment)
+        pdb.set_trace()
         return torch.stack(attention_mask), torch.stack(segment_mask)
 
 
