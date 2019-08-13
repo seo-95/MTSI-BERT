@@ -34,7 +34,7 @@ class MTSIKvretConfig:
     """
     _N_INTENTS = 3 # number of intents
     _BATCH_SIZE = 1
-    _LAYERS_NUM = 50
+    _LAYERS_NUM = 15
     _SEED = 1 # for reroducibility of results
     _LEARNING_RATE = 0.005
     _WINDOW_SIZE = 3 # tipically odd number [Q(t-1), R(t-1), Q(t)]

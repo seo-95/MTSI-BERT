@@ -100,7 +100,7 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
 
             attention_mask.append(tmp_attention)
             segment_mask.append(tmp_segment)
-        pdb.set_trace()
+
         return torch.stack(attention_mask), torch.stack(segment_mask)
 
 

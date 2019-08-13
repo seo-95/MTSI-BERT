@@ -13,7 +13,7 @@ from .MTSIBertInputBuilder import MTSITensorBuilder
 
 class MTSIBert(nn.Module):
     """Implementation of MTSI-Bert"""
-    _BERT_H = 768 
+    _BERT_H_DIM = 768 
     _BERT_CLS_IDX = 101
     _BERT_SEP_IDX = 102
     _BERT_MASK_IDX = 103
@@ -28,8 +28,8 @@ class MTSIBert(nn.Module):
         self.num_layers = num_layers
         self.n_intents = n_intents
         self.batch_size = batch_size
-        self.bert_hidden_dim = MTSIBert._BERT_H
-        self.gru_hidden_dim = MTSIBert._BERT_H
+        self.bert_hidden_dim = MTSIBert._BERT_H_DIM
+        self.gru_hidden_dim = MTSIBert._BERT_H_DIM
 
         self._window_size = window_size
         self._sliding_win = SlidingWindow(window_size)
@@ -52,9 +52,11 @@ class MTSIBert(nn.Module):
                                     nn.ReLU(),
                                     nn.Linear(500, 300),
                                     nn.ReLU(),
+                                    nn.Linear(300, 200),
+                                    nn.ReLU()
                                 )
-        self._intent_classifier = nn.Linear(300, self.n_intents)
-        self._action_classifier = nn.Linear(300, 2)
+        self._intent_classifier = nn.Linear(200, self.n_intents)
+        self._action_classifier = nn.Linear(200, 2)
         self._softmax = nn.functional.softmax
 
 
@@ -91,8 +93,8 @@ class MTSIBert(nn.Module):
         attention_mask, segment_mask = tensor_builder.build_attention_and_segment(bert_input)
         attention_mask = attention_mask.to(device)
         segment_mask = segment_mask.to(device)
-
-        if str(device) == 'cuda:0':
+        
+        if 'cuda' in str(device):
             torch.cuda.empty_cache()
 
         ### BERT
@@ -106,7 +108,6 @@ class MTSIBert(nn.Module):
                                                 segment_mask = segment_mask,
                                                 attention_mask = attention_mask)
 
-        pdb.set_trace()
 
                     ### EOD GRU
         # bert_cls_out is a tensor of shape `B x W_PER_DIALOGUE x 768`
@@ -114,26 +115,25 @@ class MTSIBert(nn.Module):
         
 
         ### SENTENCE ENCODER FOR INTENT AND ACTION
-        # here compute average and send to sentence encoder
+        # here compute average (only on the first sentence of the window) and then send to sentence encoder
         # bert_hiddens has dimension WIN_PER_DIALOGUE x WIN_LENGTH x 768
         # sentence_avg has dimension WIN_PER_DIALOGUE x WIN_LENGTH
-        sentence_avg = compute_average(bert_hiddens, attention_mask)
-        sentence_out = self._sentence_encoder(sentence_avg)
+        sentence_avg = self.__compute_average(bert_hiddens[0], attention_mask[0])
+        sentence_encoder_out = self._sentence_encoder(sentence_avg)
 
 
         ### LOGITS and predictions
         logits_eod = self._eod_classifier(gru_out)
-        logits_intent = self._intent_classifier()
-        logits_action = self._action_classifier()
+        logits_intent = self._intent_classifier(sentence_encoder_out)
+        logits_action = self._action_classifier(sentence_encoder_out)
 
-        #logits = logits.squeeze(0) # now logits has dim `B x 3` (batch_size * num_labels)
-        prediction_eod = self._softmax(logits_eod, dim=1)
-        prediction_intent = self._softmax(logits_intent, dim=1)
-        prediction_action = self._softmax(logits_action, dim=1)
-
-        return prediction_eod, prediction_intent, prediction_action,\
-                logits_eod, logits_intent, logits_action, hidden
-
+        prediction_eod = self._softmax(logits_eod, dim=2)
+        prediction_intent = self._softmax(logits_intent, dim=0)
+        prediction_action = self._softmax(logits_action, dim=0)
+        
+        return {'logit': logits_eod, 'prediction': prediction_eod},\
+                {'logit': logits_intent, 'prediction': prediction_intent},\
+                {'logit': logits_action, 'prediction': prediction_action}, hidden
                 
 
 
@@ -152,6 +152,21 @@ class MTSIBert(nn.Module):
         bert_input = F.pad(bert_input, (0, 0, 0, batch_residual), 'constant', 0)
         return bert_input
 
+
+    def __compute_average(self, bert_hiddens, attention_mask):
+
+        count = 0
+        res = torch.zeros(MTSIBert._BERT_H_DIM)
+        for bert_h, att_value in zip(bert_hiddens, attention_mask):
+            # if attention value is one then put this in 
+            if att_value == 1:
+                res = torch.add(res, bert_h)
+                count += 1
+            else:
+                break #pass
+
+        return torch.div(res, count)
+                
 
 
 

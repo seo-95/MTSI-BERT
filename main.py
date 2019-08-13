@@ -4,7 +4,6 @@ import os
 import pdb
 import sys
 
-import GPUtil
 import numpy as np
 import torch
 from pytorch_transformers import BertTokenizer
@@ -13,7 +12,7 @@ from torch.utils.data import DataLoader
 from model import (MTSIAdapterDataset, KvretConfig, KvretDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
 
-_N_EPOCHS = 20
+_N_EPOCHS = 50
 
 
 def get_eod(turns, win_size, windows_per_dialogue):
@@ -55,7 +54,7 @@ def train(load_checkpoint_path=None):
 
     # Parameters
     params = {'batch_size': MTSIKvretConfig._BATCH_SIZE,
-            'shuffle': False,
+            'shuffle': True,
             'num_workers': 0}
 
     training_generator = DataLoader(badapter_train, **params)
@@ -84,9 +83,12 @@ def train(load_checkpoint_path=None):
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)
 
-    # this weights are needed because of unbalancing between eod and not-eod
+    # this weights are needed because of unbalancing between 0 and 1 for action and eod
     loss_eod_weights = torch.tensor([0.3, 1])
+    loss_action_weights = torch.tensor([0.2, 1])
     loss_eod = torch.nn.CrossEntropyLoss(weight=loss_eod_weights).to(device)
+    loss_action = torch.nn.CrossEntropyLoss(weight=loss_action_weights).to(device)
+    loss_intent = torch.nn.CrossEntropyLoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE)
     
     # creates the directory for the checkpoints     
@@ -109,12 +111,14 @@ def train(load_checkpoint_path=None):
 
     for epoch in range(_N_EPOCHS):
         model.train()
-        train_losses = []
+        t_eod_losses = []
+        t_intent_losses = []
+        t_action_losses = []
         train_correctly_predicted = 0
         val_correctly_predicted = 0
         
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
-            
+
             # 0 = intra dialogue ; 1 = eod
             eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
                                 windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
@@ -130,25 +134,23 @@ def train(load_checkpoint_path=None):
 
             optimizer.zero_grad()
 
-            output, logits, hidden = model(local_batch,\
+            eod, intent, action, hidden = model(local_batch,\
                                             local_turns, dialogue_ids,\
                                             tensor_builder,\
                                             device=device)
 
-            # TODO only with single batch. Adapt!
             # compute loss only on real dialogue (exclude padding)
-            loss = loss_eod(logits.squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
-            train_losses.append(loss.item())
-            loss.backward()
+            loss1 = loss_eod(eod['logit'].squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
+            loss2 = loss_intent(intent['logit'].unsqueeze(0), local_intents)
+            loss3 = loss_action(action['logit'].unsqueeze(0), local_actions)
+            tot_loss = loss1 + loss2 + loss3
+            tot_loss.backward()
 
-            #if str(device) == 'cuda:0':
-                #occupied_mem_before = round(torch.cuda.memory_allocated()/1000000000, 2)
-                #occupied_cache_before = round(torch.cuda.memory_cached()/1000000000, 2)
-            
-            if str(device) == 'cuda:0':
-                torch.cuda.empty_cache()
-            # clipping_value = 5
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value) TODO only on GRU
+            #save results
+            t_eod_losses.append(loss1.item())
+            t_intent_losses.append(loss2.item())
+            t_action_losses.append(loss3.item())
+
             optimizer.step()
             # detach the hidden after each batch to avoid infinite gradient graph
             hidden.detach_()
@@ -157,7 +159,7 @@ def train(load_checkpoint_path=None):
             # predictions = torch.argmax(output, dim=1)
             # train_correctly_predicted += (predictions == local_labels).sum().item()
         
-            if str(device) == 'cuda:0':
+            if 'cuda' in str(device):
                 torch.cuda.empty_cache()
                 #occupied_mem_after = round(torch.cuda.memory_allocated()/1000000000, 2)
                 #occupied_cache_after = round(torch.cuda.memory_cached()/1000000000, 2)
@@ -173,11 +175,15 @@ def train(load_checkpoint_path=None):
         val_losses = []
         with torch.no_grad():
             model.eval()
+            v_eod_losses = []
+            v_intent_losses = []
+            v_action_losses = []
             for local_batch, local_turns, local_intents, local_actions, dialogue_ids in validation_generator:
-                    
+
                 # 0 = intra dialogue ; 1 = eod
                 eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
                                     windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 1)
+                
                 # local_batch.shape == B x D_LEN x U_LEN
                 # local_intents.shape == B
                 # local_actions.shape == B
@@ -188,15 +194,21 @@ def train(load_checkpoint_path=None):
                 eod_label = eod_label.to(device)
                     
 
-                output, logits, hidden = model(local_batch,
+                eod, intent, action, _ = model(local_batch,\
                                                 local_turns, dialogue_ids,\
                                                 tensor_builder,\
                                                 device=device)
-                if str(device) == 'cuda:0':
+                if 'cuda' in str(device):
                     torch.cuda.empty_cache()
                 
-                loss = loss_eod(logits.squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
-                val_losses.append(loss.item())
+                loss1 = loss_eod(eod['logit'].squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
+                loss2 = loss_intent(intent['logit'].unsqueeze(0), local_intents)
+                loss3 = loss_action(action['logit'].unsqueeze(0), local_actions)
+
+                #save results
+                v_eod_losses.append(loss1.item())
+                v_intent_losses.append(loss2.item())
+                v_action_losses.append(loss3.item())
                 
                 # count correct predictions
                 #predictions = torch.argmax(output, dim=1)
@@ -205,8 +217,8 @@ def train(load_checkpoint_path=None):
 
         #train_accuracy = round(train_correctly_predicted/train_len * 100, 2)
         #val_accuracy = round(val_correctly_predicted/val_len * 100, 2)
-        train_mean_loss = round(np.mean(train_losses), 4)
-        val_mean_loss = round(np.mean(val_losses), 4)
+        train_mean_loss = round(np.mean([t_eod_losses, t_action_losses, t_intent_losses]), 4)
+        val_mean_loss = round(np.mean([v_eod_losses, v_action_losses, v_intent_losses]), 4)
         
         # check if new best model
         if val_mean_loss < best_loss:
@@ -215,12 +227,16 @@ def train(load_checkpoint_path=None):
           torch.save(model.state_dict(),\
                        MTSIKvretConfig._SAVING_PATH+curr_date+'/state_dict.pt')
         
-        #log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+':: TRAIN LOSS = '+str(train_mean_loss)+', TRAIN ACCURACY= '+str(train_accuracy)+'%'+\
-                                    #'\n\t\t\t || VAL LOSS = '+str(val_mean_loss)+', VAL ACCURACY= '+str(val_accuracy)+'%'
+
         log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+':: TRAIN LOSS = '+str(train_mean_loss)+\
-                                                                '\n\t\t\t || VAL LOSS = '+str(val_mean_loss)
+                                                                '[eod = '+str(round(np.mean(t_eod_losses), 4))+'], '+\
+                                                                '[action = '+str(round(np.mean(t_action_losses), 4))+'], '+\
+                                                                '[intent = '+str(round(np.mean(t_intent_losses), 4))+'], '+\
+                                                                '\n\t\t\t || VAL LOSS = '+str(val_mean_loss)+\
+                                                                '[eod = '+str(round(np.mean(v_eod_losses), 4))+'], '+\
+                                                                '[action = '+str(round(np.mean(v_action_losses), 4))+'], '+\
+                                                                '[intent = '+str(round(np.mean(v_intent_losses), 4))+']'
         print(log_str)
-        #logging.info(log_str)
 
 
 
