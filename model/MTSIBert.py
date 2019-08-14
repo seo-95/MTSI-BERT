@@ -93,7 +93,7 @@ class MTSIBert(nn.Module):
         attention_mask, segment_mask = tensor_builder.build_attention_and_segment(bert_input)
         attention_mask = attention_mask.to(device)
         segment_mask = segment_mask.to(device)
-        
+        pdb.set_trace()
         if 'cuda' in str(device):
             torch.cuda.empty_cache()
 
@@ -104,8 +104,8 @@ class MTSIBert(nn.Module):
             bert_hiddens = torch.randn((self._windows_per_batch, self._window_length, 768))
         else:
             # bert_input.shape == [WIN_PER_DIALOGUE x WIN_LENGTH]
-            bert_hiddens, cls_out = self._bert(input_ids = bert_input,
-                                                segment_mask = segment_mask,
+            bert_hiddens, bert_cls_out = self._bert(input_ids = bert_input,
+                                                token_type_ids = segment_mask,
                                                 attention_mask = attention_mask)
 
 
@@ -118,7 +118,7 @@ class MTSIBert(nn.Module):
         # here compute average (only on the first sentence of the window) and then send to sentence encoder
         # bert_hiddens has dimension WIN_PER_DIALOGUE x WIN_LENGTH x 768
         # sentence_avg has dimension WIN_PER_DIALOGUE x WIN_LENGTH
-        sentence_avg = self.__compute_average(bert_hiddens[0], attention_mask[0])
+        sentence_avg = self.__compute_average(bert_hiddens[0], attention_mask[0], device)
         sentence_encoder_out = self._sentence_encoder(sentence_avg)
 
 
@@ -153,10 +153,10 @@ class MTSIBert(nn.Module):
         return bert_input
 
 
-    def __compute_average(self, bert_hiddens, attention_mask):
+    def __compute_average(self, bert_hiddens, attention_mask, device='cpu'):
 
         count = 0
-        res = torch.zeros(MTSIBert._BERT_H_DIM)
+        res = torch.zeros(MTSIBert._BERT_H_DIM).to(device)
         for bert_h, att_value in zip(bert_hiddens, attention_mask):
             # if attention value is one then put this in 
             if att_value == 1:

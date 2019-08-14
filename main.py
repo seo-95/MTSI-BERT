@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from pytorch_transformers import BertTokenizer
 from torch.utils.data import DataLoader
+from torch import nn
 
 from model import (MTSIAdapterDataset, KvretConfig, KvretDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
@@ -137,7 +138,7 @@ def train(load_checkpoint_path=None):
             eod, intent, action, hidden = model(local_batch,\
                                             local_turns, dialogue_ids,\
                                             tensor_builder,\
-                                            device=device)
+                                            device)
 
             # compute loss only on real dialogue (exclude padding)
             loss1 = loss_eod(eod['logit'].squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
@@ -197,7 +198,7 @@ def train(load_checkpoint_path=None):
                 eod, intent, action, _ = model(local_batch,\
                                                 local_turns, dialogue_ids,\
                                                 tensor_builder,\
-                                                device=device)
+                                                device)
                 if 'cuda' in str(device):
                     torch.cuda.empty_cache()
                 

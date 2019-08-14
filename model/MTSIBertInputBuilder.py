@@ -87,12 +87,12 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
         for idx, t in enumerate(bert_input):
 
             # build attention
-            tmp_attention = torch.zeros(len(t))
+            tmp_attention = torch.zeros(len(t), dtype=torch.long)
             non_zero = len(t[t!=0])
             tmp_attention[:non_zero] = 1
 
             # build segment
-            tmp_segment = torch.zeros(len(t))
+            tmp_segment = torch.zeros(len(t), dtype=torch.long)
             # if is the first window then we have only 1 sentence. Avoid also dialogue padding tensors
             if idx != 0 and t[0] != 0:
                 first_segment_end = self.__find_first_occurrence(t, MTSITensorBuilder._BERT_SEP_IDX)
