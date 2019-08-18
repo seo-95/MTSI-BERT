@@ -13,7 +13,8 @@ from torch import nn
 from model import (MTSIAdapterDataset, KvretConfig, KvretDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
 
-_N_EPOCHS = 50
+_N_EPOCHS = 20
+_OPTIMIZER_STEP_RATE = 16 # how many samples has to be computed before the optimizer.step()
 
 
 def get_eod(turns, win_size, windows_per_dialogue):
@@ -62,43 +63,36 @@ def train(load_checkpoint_path=None):
     validation_generator = DataLoader(badapter_val, **params)
 
     # Model preparation
-    model = MTSIBert(num_layers = MTSIKvretConfig._LAYERS_NUM,
+    model = MTSIBert(num_layers_encoder = MTSIKvretConfig._ENCODER_LAYERS_NUM,
+                    num_layers_eod = MTSIKvretConfig._EOD_LAYERS_NUM,
                     n_intents = MTSIKvretConfig._N_INTENTS,
                     batch_size = MTSIKvretConfig._BATCH_SIZE,
-                    # length of a single tensor: (max_tokens+1) + 3bert_tokens which are 1[CLS] and 2[SEP]
-                    window_length = KvretConfig._KVRET_MAX_BERT_TOKENS_PER_WINDOWS + 1,
-                    # user utterances for this dialogue + first user utterance of the next
-                    windows_per_batch = KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2,
                     pretrained = 'bert-base-cased',
                     seed = MTSIKvretConfig._SEED,
                     window_size = MTSIKvretConfig._WINDOW_SIZE)
+
     if load_checkpoint_path != None:
-        print('model loaded from: '+load_path)
+        print('model loaded from: '+load_checkpoint_path)
         model.load_state_dict(torch.load(load_checkpoint_path))
+    # work on multiple GPUs when availables
     if torch.cuda.device_count() > 1:
         print('active devices = '+str(torch.cuda.device_count()))
         model = nn.DataParallel(model)
     model.to(device)
-    # works on multiple GPUs when availables
-    if torch.cuda.device_count() > 1:
-        print("Let's use", torch.cuda.device_count(), "GPUs!")
-        model = nn.DataParallel(model)
 
     # this weights are needed because of unbalancing between 0 and 1 for action and eod
-    loss_eod_weights = torch.tensor([0.3, 1])
-    loss_action_weights = torch.tensor([0.2, 1])
+    loss_eod_weights = torch.tensor([1, 4.2510])
+    loss_action_weights = torch.tensor([1, 4.8716])
     loss_eod = torch.nn.CrossEntropyLoss(weight=loss_eod_weights).to(device)
     loss_action = torch.nn.CrossEntropyLoss(weight=loss_action_weights).to(device)
     loss_intent = torch.nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE)
+    optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE, weight_decay=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = [10,20,40], gamma = 0.1)
     
-    # creates the directory for the checkpoints     
+    # creates the directory for the checkpoints
     os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH), exist_ok=True)
     curr_date = datetime.datetime.now().isoformat()
     os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH+curr_date+'/'), exist_ok=True)
-    #if not os.path.exists(MTSIKvretConfig._SAVING_PATH+curr_date+'/'+'MTSI.log'):
-    #  with open(MTSIKvretConfig._SAVING_PATH+curr_date+'/'+'MTSI.log', 'w'): pass
-    #logging.basicConfig(filename=MTSIKvretConfig._SAVING_PATH+curr_date+'/'+'MTSI.log', filemode='a', level=logging.INFO)
     
     # initializes statistics
     train_len = training_set.__len__()
@@ -117,12 +111,13 @@ def train(load_checkpoint_path=None):
         t_action_losses = []
         train_correctly_predicted = 0
         val_correctly_predicted = 0
-        
+        scheduler.step()
+
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
 
             # 0 = intra dialogue ; 1 = eod
-            eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
-                                windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
+            eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,
+                                        windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
             
             # local_batch.shape == B x D_LEN x U_LEN
             # local_intents.shape == B
@@ -133,18 +128,16 @@ def train(load_checkpoint_path=None):
             local_actions = local_actions.to(device)
             eod_label = eod_label.to(device)
 
-            optimizer.zero_grad()
-
-            eod, intent, action, hidden = model(local_batch,\
-                                            local_turns, dialogue_ids,\
-                                            tensor_builder,\
-                                            device)
+            eod, intent, action = model(local_batch,
+                                        local_turns, dialogue_ids,
+                                        tensor_builder,
+                                        device)
 
             # compute loss only on real dialogue (exclude padding)
             loss1 = loss_eod(eod['logit'].squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
             loss2 = loss_intent(intent['logit'].unsqueeze(0), local_intents)
             loss3 = loss_action(action['logit'].unsqueeze(0), local_actions)
-            tot_loss = loss1 + loss2 + loss3
+            tot_loss = (loss1 + loss2 + loss3)/3
             tot_loss.backward()
 
             #save results
@@ -152,9 +145,11 @@ def train(load_checkpoint_path=None):
             t_intent_losses.append(loss2.item())
             t_action_losses.append(loss3.item())
 
-            optimizer.step()
+            if idx % _OPTIMIZER_STEP_RATE == 0 or idx == badapter_train.__len__()-1:
+                optimizer.step()
+                optimizer.step()
             # detach the hidden after each batch to avoid infinite gradient graph
-            hidden.detach_()
+            #hidden.detach_()
 
             # count correct predictions
             # predictions = torch.argmax(output, dim=1)
@@ -195,10 +190,10 @@ def train(load_checkpoint_path=None):
                 eod_label = eod_label.to(device)
                     
 
-                eod, intent, action, _ = model(local_batch,\
-                                                local_turns, dialogue_ids,\
-                                                tensor_builder,\
-                                                device)
+                eod, intent, action = model(local_batch,
+                                            local_turns, dialogue_ids,
+                                            tensor_builder,
+                                            device)
                 if 'cuda' in str(device):
                     torch.cuda.empty_cache()
                 
@@ -224,9 +219,11 @@ def train(load_checkpoint_path=None):
         # check if new best model
         if val_mean_loss < best_loss:
           #saves the model weights
-          best_loss = val_mean_loss
-          torch.save(model.state_dict(),\
+          best_loss = val_mean_loss 
+          # save using model.cpu to allow the further loading also on cpu or single-GPU
+          torch.save(model.cpu().state_dict(),\
                        MTSIKvretConfig._SAVING_PATH+curr_date+'/state_dict.pt')
+        model.to(device)
         
 
         log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+':: TRAIN LOSS = '+str(train_mean_loss)+\
@@ -242,57 +239,8 @@ def train(load_checkpoint_path=None):
 
 
 
-def print_statistics_per_set(curr_set):
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
-
-    tok, sentences, id = curr_set.get_max_tokens_per_dialogue(tokenizer)
-    print('\n--- max tokens per dialogue ---')
-    print('num tokens = ' + str(tok) + ', \nnum sentences = ' + str(sentences) + ', \nid = ' + id)
-    tok, sentences, id = curr_set.get_max_tokens_per_sentence(tokenizer)
-    print('\n--- max tokens per sentence ---')
-    print('num tokens = ' + str(tok) + ', \nnum sentences = ' + str(sentences) + ', \nid = ' + id)
-    sentences, id = curr_set.get_max_utterances_per_dialogue()
-    print('\n--- max sentences per dialogue ---')
-    print('num sentences = ' + str(sentences) + ', \nid = ' + id)
-    sentences, id = curr_set.get_max_num_user_utterances()
-    print('\n--- max user utterances per dialogue ---')
-    print('num user utterances = ' + str(sentences) + ', \nid = ' + id)
-    fetch_count, insert_count = curr_set.get_action_frequency()
-    id_l = curr_set.get_dialogues_with_subsequent_same_actor_utterances()
-    print('\n--- check dialogues with subsequent same actor utterances ---')
-    print('ids = ' + str(id_l))
-    print('\n--- action frequency ---')
-    print('num fetch = ' + str(fetch_count) + ' vs num insert = ' + str(insert_count))
-
-
-def statistics(remove_subsequent_actor=False):
-    """
-    To retrieve the max sentence lenth in order to apply the rigth amount of padding
-    """
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
-
-    print('\n\t\t\t### TRAINING ###')
-    training_set = KvretDataset(KvretConfig._KVRET_TRAIN_PATH)
-    if remove_subsequent_actor:
-        training_set.remove_subsequent_actor_utterances()
-    print_statistics_per_set(training_set)
-    
-    print('\n\t\t\t### VALIDATION ###')
-    validation_set = KvretDataset(KvretConfig._KVRET_VAL_PATH)
-    if remove_subsequent_actor:
-        validation_set.remove_subsequent_actor_utterances()
-    print_statistics_per_set(validation_set)
-
-    print('\n\t\t\t### TEST ###')
-    test_set = KvretDataset(KvretConfig._KVRET_TEST_PATH)
-    if remove_subsequent_actor:
-        test_set.remove_subsequent_actor_utterances()
-    print_statistics_per_set(test_set)
-
 
 
 
 if __name__ == '__main__':
-    #statistics(True)
-    #train(load_checkpoint_path='savings/2019-08-04T17:43:29.354518/state_dict.pt')
     train()

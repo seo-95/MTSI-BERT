@@ -3,6 +3,7 @@ import pdb
 from abc import ABC
 
 import torch
+import torch.nn.functional as F
 
 
 """
@@ -45,10 +46,46 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
         [CLS] T(1) T(2) ... T(n-1) [SEP] T(n) [SEP]
     """
     def build_tensor(self, windows_list, device):
+        """
+        This method creates the tensor dialogue input concatenating in the proper way the utterances
 
-        # the result will be a list of lists with a number of entries equal to the number of different dialogues 
+        [CLS] <Q(t-1)> <R(t-1)> [SEP] <Q(t)> [SEP]
+
+        The window is single intent, so the turn as to be considered "cyclically" inside a single dialogue.
+        When a new dialogue is detected the window is flushed and it restart with the turn counter t = 1.
+
+        Input:
+            batch : the set of dialogues in the batch having shape B x D_LEN x S_LEN
+            dialogue_ids : the ids of the dialogue
+        Output:
+            curr_dialog_window
+            segment : segment vector for the Bert model (sentence A and B)
+
+        ------------------    
+        Example with windows_size = 3:
+            At turn t = 1 will have the following shape
+
+                    [CLS] Q(t=1) [SEP]
+            
+            At turn t = t' | t' > 1 will have the following shape
+
+                    [CLS] <Q(t'-1)> <R(t'-1)> [SEP] <Q(t')> [SEP]
+
+            During training phase when a new dialogue (here called 'b') starts we have the following behaviour
+
+                    [CLS] <Qa(t=n_a)> <Ra(t=n_a)> [SEP] <Qb(t=1)> [SEP] -> new dialogue has to be detected
+                        ==> flush and come back to t=1 for the new dialogue 'b'
+                    [CLS] Qb(t=1) [SEP]
+
+                (in the above example n_a is the length of dialog 'a')
+                    
+        """
+
+
+
         res_l = []
         sep_tensor = torch.tensor(MTSITensorBuilder._BERT_SEP_IDX).reshape(1).to(device)
+        max_win_len = 0
 
         for win in windows_list:
             # at first append [CLS]
@@ -66,13 +103,17 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
                                         no_padded, sep_tensor))
                 else:
                     curr_builded_t = torch.cat((curr_builded_t, no_padded))
-            
-            # for count windows length
-            #with open('booh.txt', 'a') as f:
-            #    f.write(str(len(curr_builded_t))+'\n')
+                
+             # search the max sequence length to make padding at the end
+            if len(curr_builded_t) > max_win_len:
+                max_win_len = len(curr_builded_t)
             res_l.append(curr_builded_t)
 
-        return res_l
+        for idx, t in enumerate(res_l):
+            curr_residual = max_win_len - len(t)
+            res_l[idx] = F.pad(t, (0, curr_residual), 'constant', 0)
+        
+        return torch.stack(res_l)
 
 
     def __remove_padding(self, t):
@@ -108,7 +149,3 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
         for idx, v in enumerate(t):
             if v == token:
                 return idx
-
-
-
-            

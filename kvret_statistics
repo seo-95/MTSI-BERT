@@ -59,7 +59,7 @@ id = 7f1d72e6-7656-4db2-a4ee-3f56567f0cfd
 num sentences = 12
 id = 3113d0ad-3d7a-4a55-acb8-d77b15ac40dd
 
-### TEST
+### TEST:
 num sentences = 12
 id = 17fa2345-7e74-4eb9-a999-ac35ae67c9da
 
@@ -74,7 +74,7 @@ id = 7f1d72e6-7656-4db2-a4ee-3f56567f0cfd
 num user utterances = 6
 id = 99167679-9d92-4762-b47f-084d4ac3dd96
 
-### TEST
+### TEST:
 num user utterances = 7 (6 if subsequent removed)
 id = 38e7f22d-5914-4fee-a696-c83bbd1be451
 
@@ -87,7 +87,7 @@ ids = ['ca4a934e-8a4e-48b6-90bd-fd9f20b07180', '23dc5ff5-807b-435d-b540-7917d9fd
 ### VALIDATION:
 ids = ['120c9192-09e0-41d7-93d0-03c899e11571']
 
-### TEST
+### TEST:
 ids = ['38e7f22d-5914-4fee-a696-c83bbd1be451']
 
 
@@ -101,6 +101,20 @@ num insert = 413
 num fetch = 242
 num insert = 60
 
-### TEST
+### TEST:
 num fetch = 256
 num insert = 48
+
+------------------- INTRA DIALOGUE vs EOD ----------------------------
+
+### TRAINING: (tot dialogues = 2422)
+intra dialogue = 10296
+eod = 2422
+
+### VALIDATION: (tot dialogues = 302)
+intra dialogue = 1264
+eod = 302
+
+### TEST: (tot dialogues = 304)
+intra dialogue = 1323
+eod = 304

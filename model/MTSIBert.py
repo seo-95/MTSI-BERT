@@ -4,7 +4,6 @@ from collections import deque
 
 import torch
 import torch.nn.functional as F
-
 from pytorch_transformers import BertModel, BertTokenizer
 from torch import nn
 
@@ -19,48 +18,56 @@ class MTSIBert(nn.Module):
     _BERT_MASK_IDX = 103
 
 
-    def __init__(self, num_layers, n_intents, batch_size, window_length, windows_per_batch,\
-                pretrained, seed, window_size):
+    def __init__(self, num_layers_encoder, num_layers_eod,
+                n_intents, batch_size, pretrained, seed, window_size):
+
         super(MTSIBert, self).__init__()
 
         torch.manual_seed(seed)
+        
+        self._n_intents = n_intents
+        self._batch_size = batch_size
 
-        self.num_layers = num_layers
-        self.n_intents = n_intents
-        self.batch_size = batch_size
-        self.bert_hidden_dim = MTSIBert._BERT_H_DIM
-        self.gru_hidden_dim = MTSIBert._BERT_H_DIM
+        # RNNs dimensions
+        self._encoder_num_layers = num_layers_encoder
+        self._encoder_hidden_dim = MTSIBert._BERT_H_DIM
+        self._eod_num_layers = num_layers_eod
+        self._eod_hidden_dim = 2*MTSIBert._BERT_H_DIM
+        self.__build_nn(pretrained)
 
+        # Input dimensions
         self._window_size = window_size
         self._sliding_win = SlidingWindow(window_size)
 
-        self._window_length = window_length
-        self._windows_per_batch = windows_per_batch
+
+    def __build_nn(self, pretrained):
 
         # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
-        # gru for eod classification
-        self._gru = nn.GRU(input_size = self.bert_hidden_dim,\
-                            hidden_size = self.gru_hidden_dim,\
-                            num_layers = self.num_layers,\
-                            batch_first = True)
-        self._eod_classifier = nn.Linear(in_features = self.gru_hidden_dim,\
-                                out_features = 2)
-        # encoder for action and intent classification (only on the first user utterance)
-        self._sentence_encoder = nn.Sequential(
-                                    nn.Linear(self.bert_hidden_dim, 500),
-                                    nn.ReLU(),
-                                    nn.Linear(500, 300),
-                                    nn.ReLU(),
-                                    nn.Linear(300, 200),
-                                    nn.ReLU()
-                                )
-        self._intent_classifier = nn.Linear(200, self.n_intents)
-        self._action_classifier = nn.Linear(200, 2)
-        self._softmax = nn.functional.softmax
+        self._encoderLTSM = nn.LSTM(self._encoder_hidden_dim, 
+                                    self._encoder_hidden_dim,
+                                    num_layers=self._encoder_num_layers,
+                                    batch_first=True)
+        # RNN for eod classification
+        self._eodLSTM = nn.LSTM(self._eod_hidden_dim, 
+                                self._eod_hidden_dim,
+                                batch_first=True)
 
-
+        # classifiers
+        self._eod_classifier = nn.Linear(in_features = self._eod_hidden_dim,
+                                        out_features = 2)
+        self._intent_classifier = nn.Linear(self._encoder_hidden_dim, self._n_intents)
+        self._action_classifier = nn.Linear(self._encoder_hidden_dim, 2)
+        self._softmax = F.softmax
     
+
+    def init_hiddens(self, num_windows, device):
+
+        encoder_hidden = torch.zeros(self._encoder_num_layers, num_windows, self._encoder_hidden_dim).to(device)
+        eod_hidden = torch.zeros(self._eod_num_layers, num_windows, self._eod_hidden_dim).to(device)
+        return (encoder_hidden, eod_hidden)
+
+
     def forward(self, input, turns, dialogue_ids, tensor_builder: MTSITensorBuilder,\
                 device='cpu'):
 
@@ -80,64 +87,122 @@ class MTSIBert(nn.Module):
         # remove the batch dimension
         input = input.squeeze(0)
         turns = turns.squeeze(0)
-        hidden = self.init_hidden()
-        hidden = hidden.to(device)
 
-        # PRE PROCESSING for obtaining window tensors
+        # PRE PROCESSING for obtaining windows
         # from single input sentence to window packed sentences
         windows_l = self._sliding_win.pack_windows(input, turns)
-        # returns a list of tensors to be padded and aggregated
-        t_list = tensor_builder.build_tensor(windows_l, device)
-        bert_input = self._build_bert_input(t_list)
+        # returns a padded tensor of dim NUM_WINDOWS x SEQ_LEN
+        bert_input = tensor_builder.build_tensor(windows_l, device)
         
         attention_mask, segment_mask = tensor_builder.build_attention_and_segment(bert_input)
         attention_mask = attention_mask.to(device)
         segment_mask = segment_mask.to(device)
-        pdb.set_trace()
-        if 'cuda' in str(device):
-            torch.cuda.empty_cache()
 
         ### BERT
         # only for PC debug: BERT too computationally expensive on cpu and out of mem on GPU    
         if str(device) == 'cpu':
-            bert_cls_out = torch.randn((self._windows_per_batch, 768))
-            bert_hiddens = torch.randn((self._windows_per_batch, self._window_length, 768))
+            num_win = len(bert_input)
+            seq_len = len(bert_input[0])
+            bert_cls_out = torch.randn((num_win, 768))
+            bert_hiddens = torch.randn((num_win, seq_len, 768))
         else:
             # bert_input.shape == [WIN_PER_DIALOGUE x WIN_LENGTH]
             bert_hiddens, bert_cls_out = self._bert(input_ids = bert_input,
                                                 token_type_ids = segment_mask,
                                                 attention_mask = attention_mask)
 
+        # ENCODE the sentence
+        # seq_len is a tensor containing the effective length of each sequence in encoder_input
+        encoder_input, seq_len = self.__get_user_utterances(bert_hiddens, segment_mask, attention_mask, device)
+        packed_encoder_input = torch.nn.utils.rnn.pack_padded_sequence(encoder_input, seq_len,
+                                                                        batch_first=True, enforce_sorted=False)
 
-                    ### EOD GRU
-        # bert_cls_out is a tensor of shape `B x W_PER_DIALOGUE x 768`
-        gru_out, hidden = self._gru(bert_cls_out.unsqueeze(0), hidden)
-        
+        #self._encoder_hidden, self._eod_hidden = self.init_hiddens(len(encoder_input), device)
+        packed_out, (encoder_hidden, encoder_cell) = self._encoderLTSM(packed_encoder_input)
+        torch.nn.utils.rnn.pad_packed_sequence(packed_out, batch_first=True, padding_value=0.0)
+        enc_sentence = encoder_hidden[-1] # last layer
+
+        # concatenate enc_sencente and bert_cls_out
+        enc_eod = torch.cat((enc_sentence, bert_cls_out), dim=1).unsqueeze(0)
+        eod_out, (eod_hidden, eod_cell) = self._eodLSTM(enc_eod)
 
         ### SENTENCE ENCODER FOR INTENT AND ACTION
         # here compute average (only on the first sentence of the window) and then send to sentence encoder
         # bert_hiddens has dimension WIN_PER_DIALOGUE x WIN_LENGTH x 768
         # sentence_avg has dimension WIN_PER_DIALOGUE x WIN_LENGTH
-        sentence_avg = self.__compute_average(bert_hiddens[0], attention_mask[0], device)
-        sentence_encoder_out = self._sentence_encoder(sentence_avg)
-
+        #sentence_avg = self.__compute_average(bert_hiddens[0], attention_mask[0], device)
+        #sentence_encoder_out = self._sentence_encoder(sentence_avg)
 
         ### LOGITS and predictions
-        logits_eod = self._eod_classifier(gru_out)
-        logits_intent = self._intent_classifier(sentence_encoder_out)
-        logits_action = self._action_classifier(sentence_encoder_out)
+        logits_eod = self._eod_classifier(eod_out.squeeze(0))
+        logits_intent = self._intent_classifier(enc_sentence[0])
+        logits_action = self._action_classifier(enc_sentence[0])
 
-        prediction_eod = self._softmax(logits_eod, dim=2)
+        prediction_eod = self._softmax(logits_eod, dim=1)
         prediction_intent = self._softmax(logits_intent, dim=0)
         prediction_action = self._softmax(logits_action, dim=0)
-        
+
         return {'logit': logits_eod, 'prediction': prediction_eod},\
                 {'logit': logits_intent, 'prediction': prediction_intent},\
-                {'logit': logits_action, 'prediction': prediction_action}, hidden
-                
+                {'logit': logits_action, 'prediction': prediction_action}
+        
+
+
+    def __get_user_utterances(self, bert_hiddens, segment_mask, attention_mask, device):
+        
+        res = []
+        seq_len = []
+        # the mask to retrieve the second sentence in the window
+        second_sentence_mask = torch.mul(segment_mask[1:], attention_mask[1:])
+
+        #   TODO first user utterance without the [CLS] embedding ??
+        # handle the first utterance of the dialogue independently
+        last_token_idx = len(attention_mask[0][attention_mask[0]!=0])
+        res.append(bert_hiddens[0][1:last_token_idx])
+        seq_len.append(len(res[0]))
+
+        # build the list of second utterance's token embeddings
+        for mask, win in zip(second_sentence_mask, bert_hiddens):
+            curr_window = []
+            for mask_val, token_embedding in zip(mask, win):
+                if mask_val == 1:
+                    curr_window.append(token_embedding)
+            seq_len.append(len(curr_window))
+            res.append(torch.stack(curr_window))
+        
+        # pad the number of second utterance's token embeddings
+        max_seq_len = max(seq_len)
+        for idx, t in enumerate(res):
+            if len(t) < max_seq_len:
+                curr_residual = max_seq_len - len(t)
+                res[idx] = F.pad(t, (0, 0, 0, curr_residual), 'constant', 0)
+
+        return torch.stack(res), torch.tensor(seq_len)
+
+        """
+        last_token_idx = len(attention_mask[0][attention_mask[0]!=0])
+        for idx, val in enumerate(bert_hiddens[0][1:last_token_idx]):
+            res[idx] = val
+        res.unsqueeze_(0)
+        # put each utterance in different batch
+        for mask, win in zip(second_sentence_mask, bert_hiddens):
+            tmp = torch.zeros(padding_per_win, 768).to(device)
+            idx = 0
+            for mask_val, win_val in zip(mask, win):
+                if mask_val == 1:
+                    tmp[idx] = win_val
+                    idx += 1
+            # avoid dialogue padding
+            if idx > 0:
+                tmp.unsqueeze_(0)
+                res = torch.cat((res, tmp), dim=0)
+        return res
+        """
 
 
 
+    # TODO unused
+    """
     def _build_bert_input(self, t_list):
         # apply padding (both single utterance and dialogue padding)
         for win_idx, _ in enumerate(t_list):
@@ -150,7 +215,8 @@ class MTSIBert(nn.Module):
         batch_residual = self._windows_per_batch - len(t_list)
         # now shape will be W_P_DIALOGUE x W_LENGTH 
         bert_input = F.pad(bert_input, (0, 0, 0, batch_residual), 'constant', 0)
-        return bert_input
+        return bert_input, len(t_list)
+    """
 
 
     def __compute_average(self, bert_hiddens, attention_mask, device='cpu'):
@@ -167,12 +233,6 @@ class MTSIBert(nn.Module):
 
         return torch.div(res, count)
                 
-
-
-
-    def init_hidden(self):
-        # here the second dimension is 1 because we use the hidden sequentially for each dialog window
-        return torch.zeros(self.num_layers, 1, self.gru_hidden_dim)
 
 
 
@@ -200,38 +260,7 @@ class SlidingWindow():
 
     def pack_windows(self, input, turns, device='cpu'):
         """
-        This method creates the dialogue input concatenating in the proper way the utterances
-
-        [CLS] <Q(t-1)> <R(t-1)> [SEP] <Q(t)> [SEP]
-
-        The window is single intent, so the turn as to be considered "cyclically" inside a single dialogue.
-        When a new dialogue is detected the window is flushed and it restart with the turn counter t = 1.
-
-        Input:
-            batch : the set of dialogues in the batch having shape B x D_LEN x S_LEN
-            dialogue_ids : the ids of the dialogue
-        Output:
-            curr_dialog_window
-            segment : segment vector for the Bert model (sentence A and B)
-
-        ------------------    
-        Example with windows_size = 3:
-            At turn t = 1 will have the following shape
-
-                    [CLS] Q(t=1) [SEP]
-            
-            At turn t = t' | t' > 1 will have the following shape
-
-                    [CLS] <Q(t'-1)> <R(t'-1)> [SEP] <Q(t')> [SEP]
-
-            During training phase when a new dialogue (here called 'b') starts we have the following behaviour
-
-                    [CLS] <Qa(t=n_a)> <Ra(t=n_a)> [SEP] <Qb(t=1)> [SEP] -> new dialogue has to be detected
-                        ==> flush and come back to t=1 for the new dialogue 'b'
-                    [CLS] Qb(t=1) [SEP]
-
-                (in the above example n_a is the length of dialog 'a')
-                    
+        build the windows list of the given size
         """
 
         window_list = []

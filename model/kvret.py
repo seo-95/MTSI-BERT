@@ -59,7 +59,9 @@ class KvretDataset(Dataset):
 
         get_action = lambda items : 'insert' if items is None else 'fetch'
 
-        for t_sample in json_data:
+        for idx, t_sample in enumerate(json_data):
+            if idx == 50:
+                break
             if len(t_sample['dialogue']) < 2:
                 continue
             curr_dialog = {'id': t_sample['scenario']['uuid'],\
@@ -254,3 +256,10 @@ class KvretDataset(Dataset):
             assert len(dialogue['utterances']) == len(dialogue['turns']), '[ASSERT FAILED] -- len(utt) != len(turns)'
 
     
+    def get_total_num_utterances(self):
+
+        curr_count = 0
+        for dialogue in self._dataset:
+            curr_count += len(dialogue['utterances'])
+
+        return curr_count
