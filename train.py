@@ -111,7 +111,7 @@ def train(load_checkpoint_path=None):
         t_action_losses = []
         train_correctly_predicted = 0
         val_correctly_predicted = 0
-        scheduler.step()
+        idx = 0
 
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
 
@@ -147,7 +147,7 @@ def train(load_checkpoint_path=None):
 
             if idx % _OPTIMIZER_STEP_RATE == 0 or idx == badapter_train.__len__()-1:
                 optimizer.step()
-                optimizer.step()
+                optimizer.zero_grad()
             # detach the hidden after each batch to avoid infinite gradient graph
             #hidden.detach_()
 
@@ -157,10 +157,6 @@ def train(load_checkpoint_path=None):
         
             if 'cuda' in str(device):
                 torch.cuda.empty_cache()
-                #occupied_mem_after = round(torch.cuda.memory_allocated()/1000000000, 2)
-                #occupied_cache_after = round(torch.cuda.memory_cached()/1000000000, 2)
-                #print('##[BEFORE] : MEM='+str(occupied_mem_before)+' CACHE='+str(occupied_cache_before)+'\n\t'+\
-                        #'[AFTER] : MEM='+str(occupied_mem_after)+' CACHE='+str(occupied_cache_after))
             
             
         #end of epoch
@@ -174,6 +170,7 @@ def train(load_checkpoint_path=None):
             v_eod_losses = []
             v_intent_losses = []
             v_action_losses = []
+            
             for local_batch, local_turns, local_intents, local_actions, dialogue_ids in validation_generator:
 
                 # 0 = intra dialogue ; 1 = eod
@@ -235,6 +232,7 @@ def train(load_checkpoint_path=None):
                                                                 '[action = '+str(round(np.mean(v_action_losses), 4))+'], '+\
                                                                 '[intent = '+str(round(np.mean(v_intent_losses), 4))+']'
         print(log_str)
+        scheduler.step()
 
 
 
