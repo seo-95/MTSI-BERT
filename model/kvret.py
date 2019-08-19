@@ -67,12 +67,16 @@ class KvretDataset(Dataset):
                             'turns': [],\
                             'intent': t_sample['scenario']['task']['intent'],\
                             'kb_action': get_action(t_sample['scenario']['kb']['items'])}
-
+            void_utterance = False
             for utterance in t_sample['dialogue']:
+                if len(utterance['data']['utterance']) == 0:
+                    void_utterance = True
+                    break
                 curr_dialog['utterances'].append(utterance['data']['utterance']) 
                 curr_dialog['turns'].append(utterance['turn'])
-            self._dataset.append(curr_dialog)
-            self._dialogueID_to_idx[curr_dialog['id']] = len(self._dataset) - 1
+            if not void_utterance:
+                self._dataset.append(curr_dialog)
+                self._dialogueID_to_idx[curr_dialog['id']] = len(self._dataset) - 1
 
 
     def __len__(self):

@@ -116,7 +116,6 @@ class MTSIBert(nn.Module):
                                                 token_type_ids = segment_mask,
                                                 attention_mask = attention_mask)
 
-
         # ENCODE the sentence
         # seq_len is a tensor containing the effective length of each sequence in encoder_input
         encoder_input, seq_len = self.__get_user_utterances(bert_hiddens, segment_mask, attention_mask, device)
@@ -176,7 +175,7 @@ class MTSIBert(nn.Module):
         
         res.append(bert_hiddens[0][:last_token_idx-1]) #remove the [SEP]
         seq_len.append(len(res[0]))
-
+        
         # build the list of second utterance's token embeddings
         for mask, win in zip(second_sentence_mask, bert_hiddens):
             curr_window = []

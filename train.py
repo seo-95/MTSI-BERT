@@ -160,7 +160,7 @@ def train(load_checkpoint_path=None):
             
             
         #end of epoch
-
+        print('end')
 
 
         # ------------- VALIDATION ------------- 
@@ -172,7 +172,7 @@ def train(load_checkpoint_path=None):
             v_action_losses = []
             
             for local_batch, local_turns, local_intents, local_actions, dialogue_ids in validation_generator:
-
+                
                 # 0 = intra dialogue ; 1 = eod
                 eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
                                     windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 1)
