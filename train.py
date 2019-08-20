@@ -13,7 +13,7 @@ from torch import nn
 from model import (MTSIAdapterDataset, KvretConfig, KvretDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
 
-_N_EPOCHS = 20
+_N_EPOCHS = 50
 _OPTIMIZER_STEP_RATE = 16 # how many samples has to be computed before the optimizer.step()
 
 
@@ -81,13 +81,13 @@ def train(load_checkpoint_path=None):
     model.to(device)
 
     # this weights are needed because of unbalancing between 0 and 1 for action and eod
-    loss_eod_weights = torch.tensor([1, 4.2510])
+    loss_eod_weights = torch.tensor([1, 2.6525])
     loss_action_weights = torch.tensor([1, 4.8716])
     loss_eod = torch.nn.CrossEntropyLoss(weight=loss_eod_weights).to(device)
     loss_action = torch.nn.CrossEntropyLoss(weight=loss_action_weights).to(device)
     loss_intent = torch.nn.CrossEntropyLoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE, weight_decay=0.1)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = [10,20,40], gamma = 0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = [10,20,40], gamma = 0.5)
     
     # creates the directory for the checkpoints
     os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH), exist_ok=True)
@@ -160,7 +160,6 @@ def train(load_checkpoint_path=None):
             
             
         #end of epoch
-        print('end')
 
 
         # ------------- VALIDATION ------------- 

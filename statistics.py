@@ -22,8 +22,8 @@ def print_statistics_per_set(curr_set):
     print('\n--- max tokens per dialogue ---')
     print('num tokens = ' + str(tok) + ', \nnum sentences = ' + str(sentences) + ', \nid = ' + id)
 
-    tot_num = curr_set.get_total_num_utterances()
-    print('\n--- total num utterances ---')
+    tot_num = curr_set.get_total_user_utterances()
+    print('\n--- total user utterances ---')
     print('num = ' + str(tot_num) + ', dialogues num = ' + str(curr_set.__len__()))
 
     tok, sentences, id = curr_set.get_max_tokens_per_sentence(tokenizer)

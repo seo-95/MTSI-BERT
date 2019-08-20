@@ -258,10 +258,10 @@ class KvretDataset(Dataset):
             assert len(dialogue['utterances']) == len(dialogue['turns']), '[ASSERT FAILED] -- len(utt) != len(turns)'
 
     
-    def get_total_num_utterances(self):
+    def get_total_user_utterances(self):
 
         curr_count = 0
         for dialogue in self._dataset:
-            curr_count += len(dialogue['utterances'])
+            curr_count += dialogue['turns'].count('driver')
 
         return curr_count

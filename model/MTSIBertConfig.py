@@ -37,7 +37,7 @@ class MTSIKvretConfig:
     _ENCODER_LAYERS_NUM = 1
     _EOD_LAYERS_NUM = 1
     _SEED = 26 # for reproducibility of results
-    _LEARNING_RATE = 0.001
+    _LEARNING_RATE = 5e-5
     _WINDOW_SIZE = 3 # tipically odd number [Q(t-1), R(t-1), Q(t)]
 
     _SAVING_PATH = 'savings/'

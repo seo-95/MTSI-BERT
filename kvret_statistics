@@ -107,14 +107,14 @@ num insert = 48
 
 ------------------- INTRA DIALOGUE vs EOD ----------------------------
 
-### TRAINING: (tot dialogues = 2422)
-intra dialogue = 10296
-eod = 2422
+### TRAINING: (tot dialogues = 2415)
+intra dialogue = 6406
+eod = 2415
 
-### VALIDATION: (tot dialogues = 302)
-intra dialogue = 1264
+### VALIDATION: (tot dialogues = 301)
+intra dialogue = 748
+eod = 301
+
+### TEST: (tot dialogues = 302)
+intra dialogue = 810
 eod = 302
-
-### TEST: (tot dialogues = 304)
-intra dialogue = 1323
-eod = 304
