@@ -3,6 +3,7 @@ import logging
 import os
 import pdb
 import sys
+import time
 
 import numpy as np
 import torch
@@ -240,4 +241,8 @@ def train(load_checkpoint_path=None):
 
 
 if __name__ == '__main__':
+    start = time.time()
     train()
+    end = time.time()
+    h_count = (end-start)/60/60
+    print('training time: '+str(h_count)+'h')

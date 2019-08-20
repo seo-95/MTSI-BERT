@@ -32,7 +32,8 @@ class MTSIBert(nn.Module):
         self._encoder_num_layers = num_layers_encoder
         self._encoder_hidden_dim = MTSIBert._BERT_H_DIM
         self._eod_num_layers = num_layers_eod
-        self._eod_hidden_dim = 2*MTSIBert._BERT_H_DIM
+        self._eod_input_dim = MTSIBert._BERT_H_DIM
+        self._eod_hidden_dim = MTSIBert._BERT_H_DIM
         self.__build_nn(pretrained)
 
         # Input dimensions
@@ -44,10 +45,6 @@ class MTSIBert(nn.Module):
 
         # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
-        self._encoderLTSM = nn.LSTM(self._encoder_hidden_dim, 
-                                    self._encoder_hidden_dim,
-                                    num_layers=self._encoder_num_layers,
-                                    batch_first=True)
 
         self._eodLSTM = nn.LSTM(self._eod_hidden_dim, 
                                 self._eod_hidden_dim,
@@ -111,26 +108,13 @@ class MTSIBert(nn.Module):
                                                 token_type_ids = segment_mask,
                                                 attention_mask = attention_mask)
 
-        # ENCODE the sentence
-        # seq_len is a tensor containing the effective length of each sequence in encoder_input
-        encoder_input, seq_len = self.__get_user_utterances(bert_hiddens, segment_mask, attention_mask, device)
-        packed_encoder_input = torch.nn.utils.rnn.pack_padded_sequence(encoder_input, seq_len,
-                                                                        batch_first=True, enforce_sorted=False)
-        
-        self._encoder_hidden, self._eod_hidden = self.init_hiddens(len(encoder_input), device)
-        enc_packed_out, (encoder_hidden, encoder_cell) = self._encoderLTSM(packed_encoder_input)
-        torch.nn.utils.rnn.pad_packed_sequence(enc_packed_out, batch_first=True, padding_value=0.0)
-        enc_sentence = encoder_hidden[-1] # last layer
-
-
         # concatenate enc_sencente and bert_cls_out
-        enc_eod = torch.cat((enc_sentence, bert_cls_out), dim=1).unsqueeze(0)
-        eod_out, (eod_hidden, eod_cell) = self._eodLSTM(enc_eod)
+        eod_out, (eod_hidden, eod_cell) = self._eodLSTM(bert_cls_out.unsqueeze(0))
         
         ### LOGITS and predictions
         logits_eod = self._eod_classifier(eod_out.squeeze(0))
-        logits_intent = self._intent_classifier(enc_sentence[0])
-        logits_action = self._action_classifier(enc_sentence[0])
+        logits_intent = self._intent_classifier(bert_cls_out[0])
+        logits_action = self._action_classifier(bert_cls_out[0])
 
         prediction_eod = self._softmax(logits_eod, dim=1)
         prediction_intent = self._softmax(logits_intent, dim=0)
