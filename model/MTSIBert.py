@@ -48,12 +48,7 @@ class MTSIBert(nn.Module):
                                     self._encoder_hidden_dim,
                                     num_layers=self._encoder_num_layers,
                                     batch_first=True)
-        #self._encoderbiLSTM = nn.LSTM(self._encoder_hidden_dim,
-        #                            self._encoder_hidden_dim,
-        #                            num_layers=self._encoder_num_layers,
-        #                            batch_first=True,
-        #                            bidirectional=True)
-        # RNN for eod classification
+
         self._eodLSTM = nn.LSTM(self._eod_hidden_dim, 
                                 self._eod_hidden_dim,
                                 batch_first=True)
@@ -128,24 +123,9 @@ class MTSIBert(nn.Module):
         enc_sentence = encoder_hidden[-1] # last layer
 
 
-        # hidden shape == NUM_LAYERS * NUM_DIRECTIONS x BATCH x HIDDEN_SIZE
-        #packed_out, (hidden, cell) = self._encoderbiLSTM(packed_encoder_input)
-        #last_state_forward = hidden[self._encoder_num_layers-1, :, :]
-        #last_state_backward = hidden[2*self._encoder_num_layers-1, :, :]
-        # now concatenate the last of forward and the last of backward
-        #enc_sentence = torch.cat((last_state_forward, last_state_backward), dim=1)
-
-
         # concatenate enc_sencente and bert_cls_out
         enc_eod = torch.cat((enc_sentence, bert_cls_out), dim=1).unsqueeze(0)
         eod_out, (eod_hidden, eod_cell) = self._eodLSTM(enc_eod)
-
-        ### SENTENCE ENCODER FOR INTENT AND ACTION
-        # here compute average (only on the first sentence of the window) and then send to sentence encoder
-        # bert_hiddens has dimension WIN_PER_DIALOGUE x WIN_LENGTH x 768
-        # sentence_avg has dimension WIN_PER_DIALOGUE x WIN_LENGTH
-        #sentence_avg = self.__compute_average(bert_hiddens[0], attention_mask[0], device)
-        #sentence_encoder_out = self._sentence_encoder(sentence_avg)
         
         ### LOGITS and predictions
         logits_eod = self._eod_classifier(eod_out.squeeze(0))
