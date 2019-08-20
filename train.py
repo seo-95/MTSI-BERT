@@ -3,14 +3,15 @@ import logging
 import os
 import pdb
 import sys
+import time
 
 import numpy as np
 import torch
 from pytorch_transformers import BertTokenizer
-from torch.utils.data import DataLoader
 from torch import nn
+from torch.utils.data import DataLoader
 
-from model import (MTSIAdapterDataset, KvretConfig, KvretDataset, MTSIBert,
+from model import (KvretConfig, KvretDataset, MTSIAdapterDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
 
 _N_EPOCHS = 15
