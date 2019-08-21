@@ -7,12 +7,12 @@ import sys
 import numpy as np
 import torch
 from pytorch_transformers import BertTokenizer
-from torch.utils.data import DataLoader
+from sklearn.metrics import f1_score
 from torch import nn
+from torch.utils.data import DataLoader
 
-from model import (MTSIAdapterDataset, KvretConfig, KvretDataset, MTSIBert,
+from model import (KvretConfig, KvretDataset, MTSIAdapterDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
-
 
 
 def get_eod(turns, win_size, windows_per_dialogue):
@@ -28,57 +28,21 @@ def get_eod(turns, win_size, windows_per_dialogue):
     return res, user_count-1
 
 
+def compute_f1(model, data_generator, device):
 
-def test(load_checkpoint_path):
-    """
-    Test utility
-    """
-    # CUDA for PyTorch
-    use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda:0" if use_cuda else "cpu")
-    print('active device = '+str(device))
-
-    # Dataset preparation
-    test_set = KvretDataset(KvretConfig._KVRET_TEST_PATH)
-    test_set.remove_subsequent_actor_utterances()
-
-    # Bert adapter for dataset
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
-    # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS) + 1 (random last sentence from other)
-    badapter_test = MTSIAdapterDataset(test_set, tokenizer,\
-                                    KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,\
-                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+2)
-
-    # Parameters
-    params = {'batch_size': MTSIKvretConfig._BATCH_SIZE,
-            'shuffle': True,
-            'num_workers': 0}
-
-    test_generator = DataLoader(badapter_test, **params)
-
-    # Model preparation
-    model = MTSIBert(num_layers = MTSIKvretConfig._LAYERS_NUM,
-                    n_intents = MTSIKvretConfig._N_INTENTS,
-                    batch_size = MTSIKvretConfig._BATCH_SIZE,
-                    # length of a single tensor: (max_tokens+1) + 3bert_tokens which are 1[CLS] and 2[SEP]
-                    window_length = KvretConfig._KVRET_MAX_BERT_TOKENS_PER_WINDOWS + 1,
-                    # user utterances for this dialogue + first user utterance of the next
-                    windows_per_batch = KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2,
-                    pretrained = 'bert-base-cased',
-                    seed = MTSIKvretConfig._SEED,
-                    window_size = MTSIKvretConfig._WINDOW_SIZE)
-    # work on multiple GPUs when availables
-    if torch.cuda.device_count() > 1:
-        print('active devices = '+str(torch.cuda.device_count()))
-        model = nn.DataParallel(model)
-    print('model loaded from: '+load_checkpoint_path)
-    model.load_state_dict(torch.load(load_checkpoint_path))
-    model.to(device)
     # initializes statistics
-    test_len = test_set.__len__()
+    true_eod = []
+    pred_eod = []
+    true_action = []
+    pred_action = []
+    true_intent = []
+    pred_intent = []
+
+    tensor_builder = TwoSepTensorBuilder()
+
     model.eval()
-    with torch.no_grad:
-        for local_batch, local_turns, local_intents, local_actions, dialogue_ids in test_generator:
+    with torch.no_grad():
+        for local_batch, local_turns, local_intents, local_actions, dialogue_ids in data_generator:
 
             # 0 = intra dialogue ; 1 = eod
             eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
@@ -93,14 +57,94 @@ def test(load_checkpoint_path):
             local_actions = local_actions.to(device)
             eod_label = eod_label.to(device)
 
-            eod, intent, action, hidden = model(local_batch,\
-                                            local_turns, dialogue_ids,\
-                                            tensor_builder,\
-                                            device)
-            pdb.set_trace()
-            # count correct predictions
-            predictions = torch.argmax(output, dim=1)
-            test_correctly_predicted += (predictions == local_labels).sum().item()
+            eod, intent, action = model(local_batch,
+                                        local_turns, 
+                                        dialogue_ids,
+                                        tensor_builder,
+                                        device)
+            
+            # take the predicted label
+            eod_predicted = torch.argmax(eod['prediction'], dim=1)
+            action_predicted = torch.argmax(action['prediction'], dim=0)
+            intent_predicted = torch.argmax(intent['prediction'], dim=0)
+            
+            true_eod += eod_label[0][:eod_idx+1].tolist()
+            pred_eod += eod_predicted.tolist()
+            true_action += local_actions.tolist()
+            pred_action.append(action_predicted.item())
+            true_intent += local_intents.tolist()
+            pred_intent.append(intent_predicted.item())
+            
+    print('eod f1-score: '+ str(f1_score(true_eod, pred_eod, average='binary')))
+    print('action f1-score: '+str(f1_score(true_action, pred_action, average='binary')))
+    print('intent f1-score: '+str(f1_score(true_intent, pred_intent, average='macro')))
+
+
+
+def test(load_checkpoint_path):
+    """
+    Test utility
+    """
+    # CUDA for PyTorch
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda:0" if use_cuda else "cpu")
+    print('active device = '+str(device))
+
+    # Dataset preparation
+
+
+    # Bert adapter for dataset
+    tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
+    # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS) + 1 (random last sentence from other)
+ 
+
+    # Model preparation
+    model = MTSIBert(num_layers_encoder = MTSIKvretConfig._ENCODER_LAYERS_NUM,
+                    num_layers_eod = MTSIKvretConfig._EOD_LAYERS_NUM,
+                    n_intents = MTSIKvretConfig._N_INTENTS,
+                    batch_size = MTSIKvretConfig._BATCH_SIZE,
+                    pretrained = 'bert-base-cased',
+                    seed = MTSIKvretConfig._SEED,
+                    window_size = MTSIKvretConfig._WINDOW_SIZE)
+    # work on multiple GPUs when availables
+    if torch.cuda.device_count() > 1:
+        print('active devices = '+str(torch.cuda.device_count()))
+        model = nn.DataParallel(model)
+    print('model loaded from: '+load_checkpoint_path) TODO
+    model.load_state_dict(torch.load(load_checkpoint_path)) TODO
+    model.to(device)
+
+
+    # Parameters
+    params = {'batch_size': MTSIKvretConfig._BATCH_SIZE,
+            'shuffle': False,
+            'num_workers': 0}
+
+    # f1-score on test set
+    test_set = KvretDataset(KvretConfig._KVRET_TEST_PATH)
+    test_set.remove_subsequent_actor_utterances()
+    badapter_test = MTSIAdapterDataset(test_set, 
+                                        tokenizer,
+                                        KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,
+                                        KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+2)
+    test_generator = DataLoader(badapter_test, **params)
+    print('### TEST SET:')
+    compute_f1(model, test_generator, device)
+
+
+    # f1-score on validation set
+    val_set = KvretDataset(KvretConfig._KVRET_VAL_PATH)
+    val_set.remove_subsequent_actor_utterances()
+    badapter_val = MTSIAdapterDataset(val_set, 
+                                        tokenizer,
+                                        KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,
+                                        KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+2)
+    val_generator = DataLoader(badapter_val, **params)
+    print('### VALIDATION SET:')
+    compute_f1(model, val_generator, device)
+
+
+
 
 
 
