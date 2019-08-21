@@ -28,12 +28,6 @@ class MTSIBert(nn.Module):
         self._n_intents = n_intents
         self._batch_size = batch_size
 
-        # RNNs dimensions
-        self._encoder_num_layers = num_layers_encoder
-        self._encoder_hidden_dim = MTSIBert._BERT_H_DIM
-        self._eod_num_layers = num_layers_eod
-        self._eod_input_dim = MTSIBert._BERT_H_DIM
-        self._eod_hidden_dim = MTSIBert._BERT_H_DIM
         self.__build_nn(pretrained)
 
         # Input dimensions
@@ -46,15 +40,11 @@ class MTSIBert(nn.Module):
         # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
 
-        self._eodLSTM = nn.LSTM(self._eod_hidden_dim, 
-                                self._eod_hidden_dim,
-                                batch_first=True)
-
         # classifiers
-        self._eod_classifier = nn.Linear(in_features = self._eod_hidden_dim,
+        self._eod_classifier = nn.Linear(in_features = MTSIBert._BERT_H_DIM,
                                         out_features = 2)
-        self._intent_classifier = nn.Linear(self._encoder_hidden_dim, self._n_intents)
-        self._action_classifier = nn.Linear(self._encoder_hidden_dim, 2)
+        self._intent_classifier = nn.Linear(MTSIBert._BERT_H_DIM, self._n_intents)
+        self._action_classifier = nn.Linear(MTSIBert._BERT_H_DIM, 2)
         self._softmax = F.softmax
     
 
@@ -107,16 +97,13 @@ class MTSIBert(nn.Module):
             bert_hiddens, bert_cls_out = self._bert(input_ids = bert_input,
                                                 token_type_ids = segment_mask,
                                                 attention_mask = attention_mask)
-
-        # concatenate enc_sencente and bert_cls_out
-        eod_out, (eod_hidden, eod_cell) = self._eodLSTM(bert_cls_out.unsqueeze(0))
         
         ### LOGITS and predictions
-        logits_eod = self._eod_classifier(eod_out.squeeze(0))
+        logits_eod = self._eod_classifier(bert_cls_out)
         logits_intent = self._intent_classifier(bert_cls_out[0])
         logits_action = self._action_classifier(bert_cls_out[0])
 
-        prediction_eod = self._softmax(logits_eod, dim=1)
+        prediction_eod = self._softmax(logits_eod, dim=0)
         prediction_intent = self._softmax(logits_intent, dim=0)
         prediction_action = self._softmax(logits_action, dim=0)
         
