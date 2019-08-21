@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from model import (KvretConfig, KvretDataset, MTSIAdapterDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
 
-_N_EPOCHS = 15
+_N_EPOCHS = 20
 _OPTIMIZER_STEP_RATE = 16 # how many samples has to be computed before the optimizer.step()
 
 
@@ -88,7 +88,7 @@ def train(load_checkpoint_path=None):
     loss_action = torch.nn.CrossEntropyLoss(weight=loss_action_weights).to(device)
     loss_intent = torch.nn.CrossEntropyLoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE, weight_decay=0.1)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = [4,8,12], gamma = 0.5)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = [4,8,12,16], gamma = 0.5)
     
     # creates the directory for the checkpoints
     os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH), exist_ok=True)
@@ -222,8 +222,8 @@ def train(load_checkpoint_path=None):
                        MTSIKvretConfig._SAVING_PATH+curr_date+'/state_dict.pt')
         model.to(device)
         
-
-        log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+':: TRAIN LOSS = '+str(train_mean_loss)+\
+        curr_lr = optimizer.param_groups[0]['lr']
+        log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+' (lr='+str(curr_lr)+'):: TRAIN LOSS = '+str(train_mean_loss)+\
                                                                 '[eod = '+str(round(np.mean(t_eod_losses), 4))+'], '+\
                                                                 '[action = '+str(round(np.mean(t_action_losses), 4))+'], '+\
                                                                 '[intent = '+str(round(np.mean(t_intent_losses), 4))+'], '+\
