@@ -28,6 +28,19 @@ def get_eod(turns, win_size, windows_per_dialogue):
     return res, user_count-1
 
 
+def remove_dataparallel(load_checkpoint_path):
+    # original saved file with DataParallel
+    state_dict = torch.load(load_checkpoint_path)
+    # create new OrderedDict that does not contain `module.`
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k[7:] # remove `module.`
+        new_state_dict[name] = v
+    # load params
+    return new_state_dict
+
+
 def compute_f1(model, data_generator, device):
 
     # initializes statistics
@@ -110,8 +123,10 @@ def test(load_checkpoint_path):
     if torch.cuda.device_count() > 1:
         print('active devices = '+str(torch.cuda.device_count()))
         model = nn.DataParallel(model)
-    print('model loaded from: '+load_checkpoint_path) TODO
-    model.load_state_dict(torch.load(load_checkpoint_path)) TODO
+    print('model loaded from: '+load_checkpoint_path)
+    #model.load_state_dict(torch.load(load_checkpoint_path))
+    new_state_dict = remove_dataparallel(load_checkpoint_path)
+    model.load_state_dict(new_state_dict)
     model.to(device)
 
 
@@ -149,4 +164,4 @@ def test(load_checkpoint_path):
 
 
 if __name__ == '__main__':
-    test(load_checkpoint_path='savings/2019-08-14T09:33:09.821063/state_dict.pt')
+    test(load_checkpoint_path='dict_archive/no_RNN/state_dict.pt')
