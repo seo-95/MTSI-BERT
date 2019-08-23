@@ -132,8 +132,8 @@ class MTSIBert(nn.Module):
         prediction_intent = self._softmax(logits_intent, dim=0)
         prediction_action = self._softmax(logits_action, dim=0)
         
-        return {'logit': logits_eod, 'prediction': prediction_eod},\
-                {'logit': logits_intent, 'prediction': prediction_intent},\
+        return {'logit': logits_eod, 'prediction': prediction_eod},
+                {'logit': logits_intent, 'prediction': prediction_intent},
                 {'logit': logits_action, 'prediction': prediction_action}
         
 
