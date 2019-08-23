@@ -33,10 +33,6 @@ class MTSIBert(nn.Module):
         self._encoder_input_dim = MTSIBert._BERT_H_DIM
         self._encoder_hidden_dim = MTSIBert._BERT_H_DIM
 
-        self._eod_num_layers = num_layers_eod
-        self._eod_input_dim = MTSIBert._BERT_H_DIM
-        self._eod_hidden_dim = MTSIBert._BERT_H_DIM
-
         # build nn stack
         self.__build_nn(pretrained)
 
@@ -54,13 +50,9 @@ class MTSIBert(nn.Module):
                                     num_layers=self._encoder_num_layers,
                                     batch_first=True,
                                     bidirectional=True)
-        # RNN for eod classification
-        self._eodLSTM = nn.LSTM(self._eod_input_dim, 
-                                self._eod_hidden_dim,
-                                batch_first=True)
 
         # classifiers
-        self._eod_classifier = nn.Linear(in_features = self._eod_hidden_dim,
+        self._eod_classifier = nn.Linear(in_features = MTSIBert._BERT_H_DIM,
                                         out_features = 2)
         self._intent_classifier = nn.Linear(2*self._encoder_hidden_dim, self._n_intents)
         self._action_classifier = nn.Linear(2*self._encoder_hidden_dim, 2)
@@ -131,13 +123,8 @@ class MTSIBert(nn.Module):
         enc_sentence = torch.cat((last_state_forward, last_state_backward), dim=1)
 
 
-        # compute eod
-        eod_input = bert_cls_out.unsqueeze(0)
-        eod_out, (eod_hidden, eod_cell) = self._eodLSTM(eod_input)
-
-
         ### LOGITS and predictions
-        logits_eod = self._eod_classifier(eod_out.squeeze(0))
+        logits_eod = self._eod_classifier(bert_cls_out)
         logits_intent = self._intent_classifier(enc_sentence[0])
         logits_action = self._action_classifier(enc_sentence[0])
 
