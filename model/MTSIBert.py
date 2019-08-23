@@ -26,12 +26,13 @@ class MTSIBert(nn.Module):
         torch.manual_seed(seed)
         
         self._n_intents = n_intents
-        self._batch_size = batch_size
 
-        # RNNs dimensions
+        # sentence encoder parameters
         self._encoder_num_layers = num_layers_encoder
         self._encoder_input_dim = MTSIBert._BERT_H_DIM
         self._encoder_hidden_dim = MTSIBert._BERT_H_DIM
+
+        self._ffnn_out_dim = 600
 
         # build nn stack
         self.__build_nn(pretrained)
@@ -42,20 +43,48 @@ class MTSIBert(nn.Module):
 
 
     def __build_nn(self, pretrained):
-
-        # architecture stack
+        """
+        Architecture stack
+        """
+        
         self._bert = BertModel.from_pretrained(pretrained)
+
+        # sentence encoder for action and intent
         self._encoderbiLSTM = nn.LSTM(self._encoder_input_dim,
                                     self._encoder_hidden_dim,
                                     num_layers=self._encoder_num_layers,
                                     batch_first=True,
                                     bidirectional=True)
 
+        # EOD FFNN
+        self._eod_ffnn = nn.Sequential(nn.Linear(MTSIBert._BERT_H_DIM, 700),
+                                        nn.ReLU(),
+                                        nn.Linear(700, 650),
+                                        nn.ReLU(),
+                                        nn.Linear(650, self._ffnn_out_dim),
+                                        nn.ReLU())
+        
+        # intent FFNN
+        self._intent_ffnn = nn.Sequential(nn.Linear(2*self._encoder_hidden_dim, 700),
+                                        nn.ReLU(),
+                                        nn.Linear(700, 650),
+                                        nn.ReLU(),
+                                        nn.Linear(650, self._ffnn_out_dim),
+                                        nn.ReLU())
+
+        # action FFNN
+        self._action_ffnn = nn.Sequential(nn.Linear(2*self._encoder_hidden_dim, 700),
+                                        nn.ReLU(),
+                                        nn.Linear(700, 650),
+                                        nn.ReLU(),
+                                        nn.Linear(650, self._ffnn_out_dim),
+                                        nn.ReLU())
+        
         # classifiers
-        self._eod_classifier = nn.Linear(in_features = MTSIBert._BERT_H_DIM,
+        self._eod_classifier = nn.Linear(in_features = self._ffnn_out_dim,
                                         out_features = 2)
-        self._intent_classifier = nn.Linear(2*self._encoder_hidden_dim, self._n_intents)
-        self._action_classifier = nn.Linear(2*self._encoder_hidden_dim, 2)
+        self._intent_classifier = nn.Linear(self._ffnn_out_dim, self._n_intents)
+        self._action_classifier = nn.Linear(self._ffnn_out_dim, 2)
         self._softmax = F.softmax
     
 
@@ -111,7 +140,7 @@ class MTSIBert(nn.Module):
 
         # ENCODE the sentence
         # seq_len is a tensor containing the effective length of each sequence in encoder_input
-        encoder_input, seq_len = self.__get_user_utterances(bert_hiddens, segment_mask, attention_mask, device)
+        encoder_input, seq_len = self.__get_user_utterance(bert_hiddens, attention_mask, device)
         packed_encoder_input = torch.nn.utils.rnn.pack_padded_sequence(encoder_input, seq_len,
                                                                         batch_first=True, enforce_sorted=False)
 
@@ -121,15 +150,20 @@ class MTSIBert(nn.Module):
         last_state_backward = hidden[2*self._encoder_num_layers-1, :, :]
         # now concatenate the last of forward and the last of backward
         enc_sentence = torch.cat((last_state_forward, last_state_backward), dim=1)
+        
+        # FFNN
+        eod_out = self._eod_ffnn(bert_cls_out)
+        intent_out = self._intent_ffnn(enc_sentence)
+        action_out = self._action_ffnn(enc_sentence)
 
         ### LOGITS and predictions
-        logits_eod = self._eod_classifier(bert_cls_out)
-        logits_intent = self._intent_classifier(enc_sentence[0])
-        logits_action = self._action_classifier(enc_sentence[0])
-
+        logits_eod = self._eod_classifier(eod_out)
+        logits_intent = self._intent_classifier(intent_out)
+        logits_action = self._action_classifier(action_out)
+        
         prediction_eod = self._softmax(logits_eod, dim=1)
-        prediction_intent = self._softmax(logits_intent, dim=0)
-        prediction_action = self._softmax(logits_action, dim=0)
+        prediction_intent = self._softmax(logits_intent, dim=1)
+        prediction_action = self._softmax(logits_action, dim=1)
         
         return {'logit': logits_eod, 'prediction': prediction_eod},\
                 {'logit': logits_intent, 'prediction': prediction_intent},\
@@ -137,12 +171,10 @@ class MTSIBert(nn.Module):
         
 
 
-    def __get_user_utterances(self, bert_hiddens, segment_mask, attention_mask, device):
+    def __get_user_utterance(self, bert_hiddens, attention_mask, device):
         
         res = []
         seq_len = []
-        # the mask to retrieve the second sentence in the window
-        second_sentence_mask = torch.mul(segment_mask[1:], attention_mask[1:])
 
         #   TODO first user utterance without the [CLS] embedding ??
         # handle the first utterance of the dialogue independently
@@ -151,23 +183,6 @@ class MTSIBert(nn.Module):
         res.append(bert_hiddens[0][:last_token_idx-1]) #remove the [SEP]
         seq_len.append(len(res[0]))
         
-        # build the list of second utterance's token embeddings
-        for mask, win in zip(second_sentence_mask, bert_hiddens):
-            curr_window = []
-            for mask_val, token_embedding in zip(mask, win):
-                if mask_val == 1:
-                    curr_window.append(token_embedding)
-            curr_window = curr_window[:-1] # remove [SEP]
-            seq_len.append(len(curr_window))
-            res.append(torch.stack(curr_window))
-        
-        # pad the number of second utterance's token embeddings
-        max_seq_len = max(seq_len)
-        for idx, t in enumerate(res):
-            if len(t) < max_seq_len:
-                curr_residual = max_seq_len - len(t)
-                res[idx] = F.pad(t, (0, 0, 0, curr_residual), 'constant', 0)
-
         return torch.stack(res), torch.tensor(seq_len)
 
 

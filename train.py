@@ -147,11 +147,11 @@ def train(load_checkpoint_path=None):
                                         local_turns, dialogue_ids,
                                         tensor_builder,
                                         device)
-
+            
             # compute loss only on real dialogue (exclude padding)
-            loss1 = loss_eod(eod['logit'].squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
-            loss2 = loss_intent(intent['logit'].unsqueeze(0), local_intents)
-            loss3 = loss_action(action['logit'].unsqueeze(0), local_actions)
+            loss1 = loss_eod(eod['logit'][:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
+            loss2 = loss_intent(intent['logit'], local_intents)
+            loss3 = loss_action(action['logit'], local_actions)
             tot_loss = (loss1 + loss2 + loss3)/3
             tot_loss.backward()
 
@@ -256,7 +256,7 @@ def train(load_checkpoint_path=None):
 
 if __name__ == '__main__':
     start = time.time()
-    train('dict_archive/eod_no_RNN/state_dict.pt')
+    train()
     end = time.time()
     h_count = (end-start)/60/60
     print('training time: '+str(h_count)+'h')
