@@ -208,9 +208,9 @@ def train(load_checkpoint_path=None):
                 if 'cuda' in str(device):
                     torch.cuda.empty_cache()
                 
-                loss1 = loss_eod(eod['logit'].squeeze(0)[:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
-                loss2 = loss_intent(intent['logit'].unsqueeze(0), local_intents)
-                loss3 = loss_action(action['logit'].unsqueeze(0), local_actions)
+                loss1 = loss_eod(eod['logit'][:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
+                loss2 = loss_intent(intent['logit'], local_intents)
+                loss3 = loss_action(action['logit'], local_actions)
 
                 #save results
                 v_eod_losses.append(loss1.item())
