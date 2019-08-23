@@ -30,13 +30,17 @@ class MTSIBert(nn.Module):
 
         # RNNs dimensions
         self._encoder_num_layers = num_layers_encoder
+        self._encoder_input_dim = MTSIBert._BERT_H_DIM
         self._encoder_hidden_dim = MTSIBert._BERT_H_DIM
+
         self._eod_num_layers = num_layers_eod
-        self._eod_input_dim = 3*MTSIBert._BERT_H_DIM
+        self._eod_input_dim = MTSIBert._BERT_H_DIM
         self._eod_hidden_dim = MTSIBert._BERT_H_DIM
+
+        # build nn stack
         self.__build_nn(pretrained)
 
-        # Input dimensions
+        # window creation
         self._window_size = window_size
         self._sliding_win = SlidingWindow(window_size)
 
@@ -45,7 +49,7 @@ class MTSIBert(nn.Module):
 
         # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
-        self._encoderbiLSTM = nn.LSTM(self._encoder_hidden_dim,
+        self._encoderbiLSTM = nn.LSTM(self._encoder_input_dim,
                                     self._encoder_hidden_dim,
                                     num_layers=self._encoder_num_layers,
                                     batch_first=True,
@@ -126,11 +130,12 @@ class MTSIBert(nn.Module):
         # now concatenate the last of forward and the last of backward
         enc_sentence = torch.cat((last_state_forward, last_state_backward), dim=1)
 
-        # concatenate enc_sencente and bert_cls_out
-        enc_eod = torch.cat((enc_sentence, bert_cls_out), dim=1).unsqueeze(0)
-        eod_out, (eod_hidden, eod_cell) = self._eodLSTM(enc_eod)
 
-        
+        # compute eod
+        eod_input = bert_cls_out.unsqueeze(0)
+        eod_out, (eod_hidden, eod_cell) = self._eodLSTM(eod_input)
+
+
         ### LOGITS and predictions
         logits_eod = self._eod_classifier(eod_out.squeeze(0))
         logits_intent = self._intent_classifier(enc_sentence[0])
