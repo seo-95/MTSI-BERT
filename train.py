@@ -31,6 +31,19 @@ def get_eod(turns, win_size, windows_per_dialogue):
     return res, user_count-1
 
 
+def remove_dataparallel(load_checkpoint_path):
+    # original saved file with DataParallel
+    state_dict = torch.load(load_checkpoint_path)
+    # create new OrderedDict that does not contain `module.`
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k[7:] # remove `module.`
+        new_state_dict[name] = v
+    # load params
+    return new_state_dict
+
+
 def train(load_checkpoint_path=None):
 
     # CUDA for PyTorch
@@ -74,7 +87,8 @@ def train(load_checkpoint_path=None):
 
     if load_checkpoint_path != None:
         print('model loaded from: '+load_checkpoint_path)
-        model.load_state_dict(torch.load(load_checkpoint_path))
+        new_state_dict = remove_dataparallel(load_checkpoint_path)
+        model.load_state_dict(new_state_dict)
     # work on multiple GPUs when availables
     if torch.cuda.device_count() > 1:
         print('active devices = '+str(torch.cuda.device_count()))
@@ -88,7 +102,7 @@ def train(load_checkpoint_path=None):
     loss_action = torch.nn.CrossEntropyLoss(weight=loss_action_weights).to(device)
     loss_intent = torch.nn.CrossEntropyLoss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE, weight_decay=0.1)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = [4,8,12,16], gamma = 0.5)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = [3,6,9], gamma = 0.5)
     
     # creates the directory for the checkpoints
     os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH), exist_ok=True)
@@ -242,7 +256,7 @@ def train(load_checkpoint_path=None):
 
 if __name__ == '__main__':
     start = time.time()
-    train()
+    train('dict_archive/eod_no_RNN/state_dict.pt')
     end = time.time()
     h_count = (end-start)/60/60
     print('training time: '+str(h_count)+'h')

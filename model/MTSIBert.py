@@ -122,7 +122,6 @@ class MTSIBert(nn.Module):
         # now concatenate the last of forward and the last of backward
         enc_sentence = torch.cat((last_state_forward, last_state_backward), dim=1)
 
-
         ### LOGITS and predictions
         logits_eod = self._eod_classifier(bert_cls_out)
         logits_intent = self._intent_classifier(enc_sentence[0])
@@ -132,8 +131,8 @@ class MTSIBert(nn.Module):
         prediction_intent = self._softmax(logits_intent, dim=0)
         prediction_action = self._softmax(logits_action, dim=0)
         
-        return {'logit': logits_eod, 'prediction': prediction_eod},
-                {'logit': logits_intent, 'prediction': prediction_intent},
+        return {'logit': logits_eod, 'prediction': prediction_eod},\
+                {'logit': logits_intent, 'prediction': prediction_intent},\
                 {'logit': logits_action, 'prediction': prediction_action}
         
 
