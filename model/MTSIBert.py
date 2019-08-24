@@ -32,8 +32,6 @@ class MTSIBert(nn.Module):
         self._encoder_input_dim = MTSIBert._BERT_H_DIM
         self._encoder_hidden_dim = MTSIBert._BERT_H_DIM
 
-        self._ffnn_out_dim = 600
-
         # build nn stack
         self.__build_nn(pretrained)
 
@@ -57,34 +55,34 @@ class MTSIBert(nn.Module):
                                     bidirectional=True)
 
         # EOD FFNN
-        self._eod_ffnn = nn.Sequential(nn.Linear(MTSIBert._BERT_H_DIM, 700),
+        self._eod_ffnn = nn.Sequential(nn.Linear(MTSIBert._BERT_H_DIM, MTSIBert._BERT_H_DIM),
                                         nn.ReLU(),
-                                        nn.Linear(700, 650),
+                                        nn.Linear(MTSIBert._BERT_H_DIM, MTSIBert._BERT_H_DIM),
                                         nn.ReLU(),
-                                        nn.Linear(650, self._ffnn_out_dim),
+                                        nn.Linear(MTSIBert._BERT_H_DIM, MTSIBert._BERT_H_DIM),
                                         nn.ReLU())
         
         # intent FFNN
-        self._intent_ffnn = nn.Sequential(nn.Linear(2*self._encoder_hidden_dim, 700),
+        self._intent_ffnn = nn.Sequential(nn.Linear(2*MTSIBert._BERT_H_DIM, 2*MTSIBert._BERT_H_DIM),
                                         nn.ReLU(),
-                                        nn.Linear(700, 650),
+                                        nn.Linear(2*MTSIBert._BERT_H_DIM, 2*MTSIBert._BERT_H_DIM),
                                         nn.ReLU(),
-                                        nn.Linear(650, self._ffnn_out_dim),
+                                        nn.Linear(2*MTSIBert._BERT_H_DIM, 2*MTSIBert._BERT_H_DIM),
                                         nn.ReLU())
 
         # action FFNN
-        self._action_ffnn = nn.Sequential(nn.Linear(2*self._encoder_hidden_dim, 700),
+        self._action_ffnn = nn.Sequential(nn.Linear(2*MTSIBert._BERT_H_DIM, 2*MTSIBert._BERT_H_DIM),
                                         nn.ReLU(),
-                                        nn.Linear(700, 650),
+                                        nn.Linear(2*MTSIBert._BERT_H_DIM, 2*MTSIBert._BERT_H_DIM),
                                         nn.ReLU(),
-                                        nn.Linear(650, self._ffnn_out_dim),
+                                        nn.Linear(2*MTSIBert._BERT_H_DIM, 2*MTSIBert._BERT_H_DIM),
                                         nn.ReLU())
         
         # classifiers
-        self._eod_classifier = nn.Linear(in_features = self._ffnn_out_dim,
+        self._eod_classifier = nn.Linear(in_features = MTSIBert._BERT_H_DIM,
                                         out_features = 2)
-        self._intent_classifier = nn.Linear(self._ffnn_out_dim, self._n_intents)
-        self._action_classifier = nn.Linear(self._ffnn_out_dim, 2)
+        self._intent_classifier = nn.Linear(2*MTSIBert._BERT_H_DIM, self._n_intents)
+        self._action_classifier = nn.Linear(2*MTSIBert._BERT_H_DIM, 2)
         self._softmax = F.softmax
     
 
@@ -155,6 +153,11 @@ class MTSIBert(nn.Module):
         eod_out = self._eod_ffnn(bert_cls_out)
         intent_out = self._intent_ffnn(enc_sentence)
         action_out = self._action_ffnn(enc_sentence)
+        
+        # Residual connection
+        eod_out.add_(bert_cls_out)
+        intent_out.add_(enc_sentence)
+        action_out.add_(enc_sentence)        
 
         ### LOGITS and predictions
         logits_eod = self._eod_classifier(eod_out)
