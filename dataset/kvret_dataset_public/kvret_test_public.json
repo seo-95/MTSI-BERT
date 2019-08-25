@@ -448,7 +448,8 @@
             "poi": false
           },
           "slots": {
-            "poi_type": "grocery store"
+            "poi_type": "grocery store",
+            "distance": "closest"
           },
           "utterance": "There are Whole Foods 2 miles away and Sigona Farmers Market 4 miles away. Where do we go?"
         }

@@ -1,0 +1,6 @@
+
+Bad annotations of entities in the dataset. We can find only 3462 out of the 6299 total annotated entities.
+
+Ex.
+    utterance: 'Yes, please set directions via a route that avoids all heavy traffic if possible'
+    annotated entities: 'avoid heavy traffic', 'dish parking'
