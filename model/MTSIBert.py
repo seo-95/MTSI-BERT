@@ -111,7 +111,7 @@ class MTSIBert(nn.Module):
 
         # ENCODE the sentence
         # seq_len is a tensor containing the effective length of each sequence in encoder_input
-        encoder_input, seq_len = self.__get_user_utterances(bert_hiddens, segment_mask, attention_mask, device)
+        encoder_input, seq_len = self.__get_user_utterance(bert_hiddens, segment_mask, attention_mask, device)
         packed_encoder_input = torch.nn.utils.rnn.pack_padded_sequence(encoder_input, seq_len,
                                                                         batch_first=True, enforce_sorted=False)
 
@@ -137,7 +137,7 @@ class MTSIBert(nn.Module):
         
 
 
-    def __get_user_utterances(self, bert_hiddens, segment_mask, attention_mask, device):
+    def __get_user_utterance(self, bert_hiddens, segment_mask, attention_mask, device):
         
         res = []
         seq_len = []
@@ -150,23 +150,6 @@ class MTSIBert(nn.Module):
         
         res.append(bert_hiddens[0][:last_token_idx-1]) #remove the [SEP]
         seq_len.append(len(res[0]))
-        
-        # build the list of second utterance's token embeddings
-        for mask, win in zip(second_sentence_mask, bert_hiddens):
-            curr_window = []
-            for mask_val, token_embedding in zip(mask, win):
-                if mask_val == 1:
-                    curr_window.append(token_embedding)
-            curr_window = curr_window[:-1] # remove [SEP]
-            seq_len.append(len(curr_window))
-            res.append(torch.stack(curr_window))
-        
-        # pad the number of second utterance's token embeddings
-        max_seq_len = max(seq_len)
-        for idx, t in enumerate(res):
-            if len(t) < max_seq_len:
-                curr_residual = max_seq_len - len(t)
-                res[idx] = F.pad(t, (0, 0, 0, curr_residual), 'constant', 0)
 
         return torch.stack(res), torch.tensor(seq_len)
 

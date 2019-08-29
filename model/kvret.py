@@ -60,6 +60,7 @@ class KvretDataset(Dataset):
         get_action = lambda items : 'insert' if items is None else 'fetch'
 
         for idx, t_sample in enumerate(json_data):
+
             if len(t_sample['dialogue']) < 2:
                 continue
             curr_dialog = {'id': t_sample['scenario']['uuid'],\
