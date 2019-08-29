@@ -40,8 +40,8 @@ class MTSIKvretConfig:
     _LEARNING_RATE = 5e-5
     _WINDOW_SIZE = 3 # tipically odd number [Q(t-1), R(t-1), Q(t)]
 
-    _SAVING_PATH = 'savings/'
-
+    _MODEL_SAVING_PATH = 'savings/'
+    _PLOTS_SAVING_PATH = 'plots/'
 
 
 

@@ -110,57 +110,6 @@ class MTSIBert(nn.Module):
         return {'logit': logits_eod, 'prediction': prediction_eod},\
                 {'logit': logits_intent, 'prediction': prediction_intent},\
                 {'logit': logits_action, 'prediction': prediction_action}
-        
-
-
-    def __get_user_utterances(self, bert_hiddens, segment_mask, attention_mask, device):
-        
-        res = []
-        seq_len = []
-        # the mask to retrieve the second sentence in the window
-        second_sentence_mask = torch.mul(segment_mask[1:], attention_mask[1:])
-
-        #   TODO first user utterance without the [CLS] embedding ??
-        # handle the first utterance of the dialogue independently
-        last_token_idx = len(attention_mask[0][attention_mask[0]!=0])
-        
-        res.append(bert_hiddens[0][:last_token_idx-1]) #remove the [SEP]
-        seq_len.append(len(res[0]))
-        
-        # build the list of second utterance's token embeddings
-        for mask, win in zip(second_sentence_mask, bert_hiddens):
-            curr_window = []
-            for mask_val, token_embedding in zip(mask, win):
-                if mask_val == 1:
-                    curr_window.append(token_embedding)
-            curr_window = curr_window[:-1] # remove [SEP]
-            seq_len.append(len(curr_window))
-            res.append(torch.stack(curr_window))
-        
-        # pad the number of second utterance's token embeddings
-        max_seq_len = max(seq_len)
-        for idx, t in enumerate(res):
-            if len(t) < max_seq_len:
-                curr_residual = max_seq_len - len(t)
-                res[idx] = F.pad(t, (0, 0, 0, curr_residual), 'constant', 0)
-
-        return torch.stack(res), torch.tensor(seq_len)
-
-
-
-    def __compute_average(self, bert_hiddens, attention_mask, device='cpu'):
-
-        count = 0
-        res = torch.zeros(MTSIBert._BERT_H_DIM).to(device)
-        for bert_h, att_value in zip(bert_hiddens, attention_mask):
-            # if attention value is one then put this in 
-            if att_value == 1:
-                res = torch.add(res, bert_h)
-                count += 1
-            else:
-                break #pass
-
-        return torch.div(res, count)
                 
 
 
