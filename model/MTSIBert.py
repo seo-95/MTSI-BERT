@@ -39,7 +39,7 @@ class MTSIBert(nn.Module):
 
         # architecture stack
         self._bert = BertModel.from_pretrained(pretrained)
-
+        
         # classifiers
         self._eod_classifier = nn.Linear(in_features = MTSIBert._BERT_H_DIM,
                                         out_features = 2)
