@@ -18,6 +18,12 @@ class MTSIBert(nn.Module):
     _BERT_MASK_IDX = 103
 
 
+    anomalies=['6139e6ae-1cf5-4a7b-b1ea-ed033b8a8f88', '2e32e189-1c5f-4e86-a6bd-f44eeac8feb5', 
+                        '892f76f8-cdd8-4a1a-a84c-6a717f1b7f4a', 'c6c6b027-0bba-4746-abf8-11b9f7ba22f9', '728bbbac-a3d3-41d3-8eb6-7c9a78d4c126', 
+                        'ae41c05d-c11c-4407-8791-830355fc341e', '1cbd090b-2696-496f-9a45-e7fbbfed6383']
+
+
+
     def __init__(self, num_layers_encoder, num_layers_eod,
                 n_intents, batch_size, pretrained, seed, window_size):
 
@@ -121,7 +127,7 @@ class MTSIBert(nn.Module):
         last_state_backward = hidden[2*self._encoder_num_layers-1, :, :]
         # now concatenate the last of forward and the last of backward
         enc_sentence = torch.cat((last_state_forward, last_state_backward), dim=1)
-
+        
         ### LOGITS and predictions
         logits_eod = self._eod_classifier(bert_cls_out)
         logits_intent = self._intent_classifier(enc_sentence[0])
@@ -130,7 +136,9 @@ class MTSIBert(nn.Module):
         prediction_eod = self._softmax(logits_eod, dim=1)
         prediction_intent = self._softmax(logits_intent, dim=0)
         prediction_action = self._softmax(logits_action, dim=0)
-        
+
+        #if dialogue_ids[0] == MTSIBert.anomalies[3]:
+            #pdb.set_trace()
         return {'logit': logits_eod, 'prediction': prediction_eod},\
                 {'logit': logits_intent, 'prediction': prediction_intent},\
                 {'logit': logits_action, 'prediction': prediction_action}
@@ -212,6 +220,7 @@ class SlidingWindow():
                 # is dialogue padding and we discard it
                 pass
 
+        self.sliding_window_flush() #clear internal buffer
         return window_list
 
 

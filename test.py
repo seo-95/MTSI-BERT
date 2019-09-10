@@ -7,12 +7,13 @@ import sys
 import numpy as np
 import torch
 from pytorch_transformers import BertTokenizer
-from sklearn.metrics import f1_score
+from sklearn.metrics import classification_report
 from torch import nn
 from torch.utils.data import DataLoader
 
 from model import (KvretConfig, KvretDataset, MTSIAdapterDataset, MTSIBert,
                    MTSIKvretConfig, TwoSepTensorBuilder)
+
 
 
 def get_eod(turns, win_size, windows_per_dialogue):
@@ -53,10 +54,10 @@ def compute_f1(model, data_generator, device):
 
     tensor_builder = TwoSepTensorBuilder()
 
-    model.eval()
+    #model.eval()
     with torch.no_grad():
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in data_generator:
-
+            
             # 0 = intra dialogue ; 1 = eod
             eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
                                 windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
@@ -88,9 +89,21 @@ def compute_f1(model, data_generator, device):
             true_intent += local_intents.tolist()
             pred_intent.append(intent_predicted.item())
             
-    print('eod f1-score: '+ str(f1_score(true_eod, pred_eod, average='binary')))
-    print('action f1-score: '+str(f1_score(true_action, pred_action, average='binary')))
-    print('intent f1-score: '+str(f1_score(true_intent, pred_intent, average='macro')))
+            if intent_predicted.item() != local_intents.tolist()[0]:
+                print('wrong intent')
+                #pdb.set_trace()
+            if action_predicted.item() != local_actions.tolist()[0]:
+                print('wrong action')
+                #pdb.set_trace()
+            
+    
+    print('--EOD score:')
+    print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
+    print('--Action score:')
+    print(classification_report(true_action, pred_action, target_names=['FETCH', 'INSERT']))
+    print('--Intent score:')
+    print(classification_report(true_intent, pred_intent, target_names=['SCHEDULE', 'WEATHER', 'NAVIGATE']))
+
 
 
 
@@ -124,10 +137,11 @@ def test(load_checkpoint_path):
         print('active devices = '+str(torch.cuda.device_count()))
         model = nn.DataParallel(model)
     print('model loaded from: '+load_checkpoint_path)
-    #model.load_state_dict(torch.load(load_checkpoint_path))
-    new_state_dict = remove_dataparallel(load_checkpoint_path)
-    model.load_state_dict(new_state_dict)
+    
+    #new_state_dict = remove_dataparallel(load_checkpoint_path)
+    #model.load_state_dict(new_state_dict)
     model.to(device)
+    model.eval()
 
 
     # Parameters
@@ -165,3 +179,4 @@ def test(load_checkpoint_path):
 
 if __name__ == '__main__':
     test(load_checkpoint_path='dict_archive/eod_no_RNN/state_dict.pt')
+    
