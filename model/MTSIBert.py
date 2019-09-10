@@ -155,10 +155,10 @@ class MTSIBert(nn.Module):
         action_out = self._action_ffnn(enc_sentence)
         
         # Residual connection
-        eod_out.add_(bert_cls_out)
-        intent_out.add_(enc_sentence)
-        action_out.add_(enc_sentence)        
-
+        eod_out += bert_cls_out
+        intent_out += enc_sentence
+        action_out += enc_sentence    
+        
         ### LOGITS and predictions
         logits_eod = self._eod_classifier(eod_out)
         logits_intent = self._intent_classifier(intent_out)
