@@ -108,6 +108,8 @@ def train(load_checkpoint_path=None):
     os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH), exist_ok=True)
     curr_date = datetime.datetime.now().isoformat()
     os.makedirs(os.path.dirname(MTSIKvretConfig._SAVING_PATH+curr_date+'/'), exist_ok=True)
+    # creates the directory for the plots figure
+    os.makedirs(os.path.dirname(MTSIKvretConfig._PLOTS_SAVING_PATH), exist_ok=True)
     
     # initializes statistics
     train_len = training_set.__len__()
@@ -124,12 +126,10 @@ def train(load_checkpoint_path=None):
         t_eod_losses = []
         t_intent_losses = []
         t_action_losses = []
-        train_correctly_predicted = 0
-        val_correctly_predicted = 0
         idx = 0
 
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
-            
+            print('a')
             # 0 = intra dialogue ; 1 = eod
             eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,
                                         windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
@@ -163,13 +163,7 @@ def train(load_checkpoint_path=None):
             if idx % _OPTIMIZER_STEP_RATE == 0 or idx == badapter_train.__len__()-1:
                 optimizer.step()
                 optimizer.zero_grad()
-            # detach the hidden after each batch to avoid infinite gradient graph
-            #hidden.detach_()
 
-            # count correct predictions
-            # predictions = torch.argmax(output, dim=1)
-            # train_correctly_predicted += (predictions == local_labels).sum().item()
-        
             if 'cuda' in str(device):
                 torch.cuda.empty_cache()
             
@@ -216,16 +210,28 @@ def train(load_checkpoint_path=None):
                 v_eod_losses.append(loss1.item())
                 v_intent_losses.append(loss2.item())
                 v_action_losses.append(loss3.item())
-                
-                # count correct predictions
-                #predictions = torch.argmax(output, dim=1)
-                #val_correctly_predicted += (predictions == local_labels).sum().item()
 
 
-        #train_accuracy = round(train_correctly_predicted/train_len * 100, 2)
-        #val_accuracy = round(val_correctly_predicted/val_len * 100, 2)
-        train_mean_loss = round(np.mean([t_eod_losses, t_action_losses, t_intent_losses]), 4)
-        val_mean_loss = round(np.mean([v_eod_losses, v_action_losses, v_intent_losses]), 4)
+        # compute the mean for each loss in the current epoch
+        t_eod_curr_mean = round(np.mean(t_eod_losses), 4)
+        t_action_curr_mean = round(np.mean(t_action_losses), 4)
+        t_intent_curr_mean = round(np.mean(t_intent_losses), 4)
+
+        v_eod_curr_mean = round(np.mean(v_eod_losses), 4)
+        v_action_curr_mean = round(np.mean(v_action_losses), 4)
+        v_intent_curr_mean = round(np.mean(v_intent_losses), 4)
+
+        train_mean_loss = round(np.mean([t_eod_curr_mean, t_action_curr_mean, t_intent_curr_mean]), 4)
+        val_mean_loss = round(np.mean([v_eod_curr_mean, v_action_curr_mean, v_intent_curr_mean]), 4)
+
+
+        # accumulate losses for plotting
+        eod_val_global_losses.append(v_eod_curr_mean)
+        action_val_global_losses.append(v_action_curr_mean)
+        intent_val_global_losses.append(v_intent_curr_mean)
+        train_global_losses.append(train_mean_loss)
+        val_global_losses.append(val_mean_loss)
+
         
         # check if new best model
         if val_mean_loss < best_loss:
@@ -246,8 +252,37 @@ def train(load_checkpoint_path=None):
                                                                 '[action = '+str(round(np.mean(v_action_losses), 4))+'], '+\
                                                                 '[intent = '+str(round(np.mean(v_intent_losses), 4))+']'
         print(log_str)
+        # step of scheduler to reduce the lr each milestone
         scheduler.step()
 
+
+    # ------------ FINAL PLOTS ------------
+
+    epoch_list = np.arange(1, _N_EPOCHS+1)
+
+    # plot train vs validation
+    plt.plot(epoch_list, train_global_losses, color='blue', label='train loss')
+    plt.plot(epoch_list, val_global_losses, color='red', label='validation loss')
+    
+    plt.title('train vs validation')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend(loc='best')
+    plt.savefig(MTSIKvretConfig._PLOTS_SAVING_PATH+'train_vs_val.png') 
+
+    # clean figure
+    plt.clf()
+
+    # plot eod vs action vs intent
+    plt.plot(epoch_list, eod_val_global_losses, color='red', label='eod loss')
+    plt.plot(epoch_list, action_val_global_losses, color='green', label='action loss')
+    plt.plot(epoch_list, intent_val_global_losses, color='blue', label='intent loss')
+
+    plt.title('eod vs action vs intent')
+    plt.xlabel('Epochs')
+    plt.ylabel('Validation Loss')
+    plt.legend(loc='best')
+    plt.savefig(MTSIKvretConfig._PLOTS_SAVING_PATH+'validation_losses.png')
 
 
 
