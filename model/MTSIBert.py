@@ -154,6 +154,7 @@ class SlidingWindow():
                 # is dialogue padding and we discard it
                 pass
 
+        self.sliding_window_flush()
         return window_list
 
 
