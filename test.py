@@ -78,10 +78,10 @@ def compute_f1(model, data_generator, device):
                                         device)
             
             # take the predicted label
-            eod_predicted = torch.argmax(eod['prediction'], dim=1)
-            action_predicted = torch.argmax(action['prediction'], dim=1)
-            intent_predicted = torch.argmax(intent['prediction'], dim=1)
-            
+            eod_predicted = torch.argmax(eod['prediction'], dim=-1)
+            action_predicted = torch.argmax(action['prediction'], dim=-1)
+            intent_predicted = torch.argmax(intent['prediction'], dim=-1)
+            pdb.set_trace()
             true_eod += eod_label[0][:eod_idx+1].tolist()
             pred_eod += eod_predicted.tolist()
             true_action += local_actions.tolist()
@@ -138,7 +138,7 @@ def test(load_checkpoint_path):
         print('active devices = '+str(torch.cuda.device_count()))
         model = nn.DataParallel(model)
     print('model loaded from: '+load_checkpoint_path)
-    #model.load_state_dict(torch.load(load_checkpoint_path))
+    model.load_state_dict(torch.load(load_checkpoint_path))
     #new_state_dict = remove_dataparallel(load_checkpoint_path)
     #model.load_state_dict(new_state_dict)
     model.to(device)
