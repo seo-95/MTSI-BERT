@@ -88,7 +88,21 @@ def train(load_checkpoint_path=None):
     loss_eod = torch.nn.CrossEntropyLoss(weight=loss_eod_weights).to(device)
     loss_action = torch.nn.CrossEntropyLoss(weight=loss_action_weights).to(device)
     loss_intent = torch.nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE, weight_decay=0.1)
+    #optimizer = torch.optim.Adam(model.parameters(), lr = MTSIKvretConfig._LEARNING_RATE, weight_decay=0.1)
+    
+    
+    optimizer = torch.optim.Adam(
+        [
+            {"params": model._bert.parameters(), "lr": MTSIKvretConfig._BERT_LEARNING_RATE},
+            {"params": model._eod_classifier.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
+            {"params": model._intent_classifier.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
+            {"params": model._action_classifier.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
+        ],
+        weight_decay=0.1
+    )
+    
+    
+    
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = [5,10,15,20,30,40,50,75], gamma = 0.5)
     
     # creates the directory for the checkpoints
@@ -119,7 +133,7 @@ def train(load_checkpoint_path=None):
         idx = 0
 
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
-
+            
             # 0 = intra dialogue ; 1 = eod
             eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,
                                         windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
@@ -232,8 +246,9 @@ def train(load_checkpoint_path=None):
                        MTSIKvretConfig._MODEL_SAVING_PATH+curr_date+'/state_dict.pt')
         model.to(device)
         
-        curr_lr = optimizer.param_groups[0]['lr']
-        log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+'(lr='+str(curr_lr)+'):: TRAIN LOSS = '+str(train_mean_loss)+\
+        bert_curr_lr = optimizer.param_groups[0]['lr']
+        nn_curr_lr = optimizer.param_groups[1]['lr']
+        log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+' (bert_lr='+str(bert_curr_lr)+', nn_lr='+str(nn_curr_lr)+'):: TRAIN LOSS = '+str(train_mean_loss)+\
                                                                 '[eod = '+str(round(np.mean(t_eod_losses), 4))+'], '+\
                                                                 '[action = '+str(round(np.mean(t_action_losses), 4))+'], '+\
                                                                 '[intent = '+str(round(np.mean(t_intent_losses), 4))+'], '+\
