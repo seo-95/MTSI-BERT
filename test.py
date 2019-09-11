@@ -78,9 +78,9 @@ def compute_f1(model, data_generator, device):
                                         device)
             
             # take the predicted label
-            eod_predicted = torch.argmax(eod['prediction'], dim=1)
-            action_predicted = torch.argmax(action['prediction'], dim=0)
-            intent_predicted = torch.argmax(intent['prediction'], dim=0)
+            eod_predicted = torch.argmax(eod['prediction'], dim=-1)
+            action_predicted = torch.argmax(action['prediction'], dim=-1)
+            intent_predicted = torch.argmax(intent['prediction'], dim=-1)
             
             true_eod += eod_label[0][:eod_idx+1].tolist()
             pred_eod += eod_predicted.tolist()
