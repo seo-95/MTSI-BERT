@@ -88,14 +88,7 @@ def compute_f1(model, data_generator, device):
             pred_action.append(action_predicted.item())
             true_intent += local_intents.tolist()
             pred_intent.append(intent_predicted.item())
-            """
-            if intent_predicted.item() != local_intents.tolist()[0]:
-                print('wrong intent')
-                #pdb.set_trace()
-            if action_predicted.item() != local_actions.tolist()[0]:
-                print('wrong action')
-                #pdb.set_trace()
-            """
+
     
     print('--EOD score:')
     print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
