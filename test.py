@@ -81,22 +81,13 @@ def compute_f1(model, data_generator, device):
             eod_predicted = torch.argmax(eod['prediction'], dim=-1)
             action_predicted = torch.argmax(action['prediction'], dim=-1)
             intent_predicted = torch.argmax(intent['prediction'], dim=-1)
-            pdb.set_trace()
             true_eod += eod_label[0][:eod_idx+1].tolist()
             pred_eod += eod_predicted.tolist()
             true_action += local_actions.tolist()
-            
             pred_action.append(action_predicted.item())
             true_intent += local_intents.tolist()
             pred_intent.append(intent_predicted.item())
-            """
-            if intent_predicted.item() != local_intents.tolist()[0]:
-                print('wrong intent')
-                #pdb.set_trace()
-            if action_predicted.item() != local_actions.tolist()[0]:
-                print('wrong action')
-                #pdb.set_trace()
-            """
+
     
     print('--EOD score:')
     print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
