@@ -7,7 +7,7 @@ from MTSIBertConfig import KvretConfig
 from nltk.translate.bleu_score import sentence_bleu
 import numpy as np
 
-_SPACY_MODEL_SAVING_PATH = 'ner/spacy_savings/'
+_SPACY_MODEL_SAVING_PATH = 'spaCy/spaCy_savings/'
 
 
 def spacy_test(spacy_model, data):

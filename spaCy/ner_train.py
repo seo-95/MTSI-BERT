@@ -17,7 +17,7 @@ import random
 
 
 _N_EPOCHS = 120
-_SPACY_MODEL_SAVING_PATH = 'ner/spacy_savings/'
+_SPACY_MODEL_SAVING_PATH = 'spacy/spacy_savings/'
 _BATCH_SIZE = 32
 
 
@@ -90,7 +90,7 @@ if __name__ == '__main__':
 
     # train on both training and validation set
     spacy_model = spacy_train(straining_set+svalidation_set)
-    spacy_model.to_disk(_SPACY_MODEL_SAVING_PATH+'spacy_'+curr_date)
+    spacy_model.to_disk(_SPACY_MODEL_SAVING_PATH+'ner/'+curr_date)
 
 
     end = time.time()
