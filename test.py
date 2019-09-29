@@ -170,4 +170,4 @@ def test(load_checkpoint_path):
 
 
 if __name__ == '__main__':
-    test(load_checkpoint_path='dict_archive/20epochs/eod_no_RNN/state_dict.pt')
+    test(load_checkpoint_path='dict_archive/20epochs/deep/state_dict.pt')
