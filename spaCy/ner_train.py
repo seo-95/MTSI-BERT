@@ -17,7 +17,7 @@ import random
 
 
 _N_EPOCHS = 120
-_SPACY_MODEL_SAVING_PATH = 'spacy/spacy_savings/'
+_SPACY_MODEL_SAVING_PATH = 'spaCy_savings/'
 _BATCH_SIZE = 32
 
 
