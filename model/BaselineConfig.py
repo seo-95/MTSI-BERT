@@ -28,7 +28,7 @@ class KvretConfig():
     _KVRET_MAX_BERT_TOKENS_PER_WINDOWS = 129 # see kvret statistics
 
 
-class MTSIKvretConfig:
+class BaselineKvretConfig:
     """
     MTSI-Bert model parameters for Kvret dataset
     """
@@ -37,8 +37,7 @@ class MTSIKvretConfig:
     _ENCODER_LAYERS_NUM = 1
     _EOD_LAYERS_NUM = 1
     _SEED = 26 # for reproducibility of results
-    _BERT_LEARNING_RATE = 5e-5
-    _NN_LEARNING_RATE = 1e-3
+    _LEARNING_RATE = 1e-3
     _WINDOW_SIZE = 3 # tipically odd number [Q(t-1), R(t-1), Q(t)]
 
     _SAVING_PATH = 'savings/'

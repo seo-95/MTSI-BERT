@@ -6,27 +6,13 @@ import sys
 
 import numpy as np
 import torch
-from pytorch_transformers import BertTokenizer
 from sklearn.metrics import classification_report
 from torch import nn
 from torch.utils.data import DataLoader
 
-from model import (KvretConfig, KvretDataset, MTSIAdapterDataset, MTSIBert,
-                   MTSIKvretConfig, TwoSepTensorBuilder)
+from model import (KvretConfig, KvretDataset, BLAdapterDataset, BaseLine,
+                   BaselineKvretConfig)
 
-
-
-def get_eod(turns, win_size, windows_per_dialogue):
-    
-    res = torch.zeros((len(turns), windows_per_dialogue), dtype=torch.long)
-    user_count = 0
-    for idx, curr_dial in enumerate(turns):
-        for t in curr_dial:
-            if t == 1:
-                user_count += 1
-        res[idx][user_count-1] = 1
-
-    return res, user_count-1
 
 
 def remove_dataparallel(load_checkpoint_path):
@@ -45,22 +31,16 @@ def remove_dataparallel(load_checkpoint_path):
 def compute_f1(model, data_generator, device):
 
     # initializes statistics
-    true_eod = []
-    pred_eod = []
+    true_eos = []
+    pred_eos = []
     true_action = []
     pred_action = []
     true_intent = []
     pred_intent = []
 
-    tensor_builder = TwoSepTensorBuilder()
 
-    #model.eval()
     with torch.no_grad():
-        for local_batch, local_turns, local_intents, local_actions, dialogue_ids in data_generator:
-            
-            # 0 = intra dialogue ; 1 = eod
-            eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
-                                windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
+        for local_batch, local_turns, seqs_len, local_intents, local_actions, dialogue_ids in data_generator:
             
             # local_batch.shape == B x D_LEN x U_LEN
             # local_intents.shape == B
@@ -69,20 +49,22 @@ def compute_f1(model, data_generator, device):
             local_batch = local_batch.to(device)
             local_intents = local_intents.to(device)
             local_actions = local_actions.to(device)
-            eod_label = eod_label.to(device)
 
-            eod, intent, action = model(local_batch,
+            eos, intent, action = model(local_batch,
                                         local_turns, 
                                         dialogue_ids,
-                                        tensor_builder,
+                                        seqs_len,
                                         device)
-            
+
+            eos_label = torch.tensor([0]*eos['logit'].shape[0]).to(device)
+            eos_label[-1] = 1                            
+
             # take the predicted label
-            eod_predicted = torch.argmax(eod['prediction'], dim=-1)
+            eos_predicted = torch.argmax(eos['prediction'], dim=-1)
             action_predicted = torch.argmax(action['prediction'], dim=-1)
             intent_predicted = torch.argmax(intent['prediction'], dim=-1)
-            true_eod += eod_label[0][:eod_idx+1].tolist()
-            pred_eod += eod_predicted.tolist()
+            true_eos += eos_label.tolist()
+            pred_eos += eos_predicted.tolist()
             true_action += local_actions.tolist()
             pred_action.append(action_predicted.item())
             true_intent += local_intents.tolist()
@@ -90,7 +72,7 @@ def compute_f1(model, data_generator, device):
 
     
     print('--EOD score:')
-    print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
+    print(classification_report(true_eos, pred_eos, target_names=['NON-EOD', 'EOD']))
     print('--Action score:')
     print(classification_report(true_action, pred_action, target_names=['FETCH', 'INSERT']))
     print('--Intent score:')
@@ -107,23 +89,13 @@ def test(load_checkpoint_path):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
     print('active device = '+str(device))
-
-    # Dataset preparation
-
-
-    # Bert adapter for dataset
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
-    # pass max_len + 1 (to pad of 1 also the longest sentence, a sort of EOS) + 1 (random last sentence from other)
  
 
     # Model preparation
-    model = MTSIBert(num_layers_encoder = MTSIKvretConfig._ENCODER_LAYERS_NUM,
-                    num_layers_eod = MTSIKvretConfig._EOD_LAYERS_NUM,
-                    n_intents = MTSIKvretConfig._N_INTENTS,
-                    batch_size = MTSIKvretConfig._BATCH_SIZE,
-                    pretrained = 'bert-base-cased',
-                    seed = MTSIKvretConfig._SEED,
-                    window_size = MTSIKvretConfig._WINDOW_SIZE)
+    model = BaseLine(num_layers_encoder = BaselineKvretConfig._ENCODER_LAYERS_NUM,
+                    num_layers_eod = BaselineKvretConfig._EOD_LAYERS_NUM,
+                    n_intents = BaselineKvretConfig._N_INTENTS,
+                    seed = BaselineKvretConfig._SEED)
     # work on multiple GPUs when availables
     if torch.cuda.device_count() > 1:
         print('active devices = '+str(torch.cuda.device_count()))
@@ -137,17 +109,16 @@ def test(load_checkpoint_path):
 
 
     # Parameters
-    params = {'batch_size': MTSIKvretConfig._BATCH_SIZE,
+    params = {'batch_size': BaselineKvretConfig._BATCH_SIZE,
             'shuffle': False,
             'num_workers': 0}
 
     # f1-score on test set
     test_set = KvretDataset(KvretConfig._KVRET_TEST_PATH)
     test_set.remove_subsequent_actor_utterances()
-    badapter_test = MTSIAdapterDataset(test_set, 
-                                        tokenizer,
-                                        KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,
-                                        KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+2)
+    badapter_test = BLAdapterDataset(test_set, 
+                                    KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,
+                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+2)
     test_generator = DataLoader(badapter_test, **params)
     print('### TEST SET:')
     compute_f1(model, test_generator, device)
@@ -156,10 +127,9 @@ def test(load_checkpoint_path):
     # f1-score on validation set
     val_set = KvretDataset(KvretConfig._KVRET_VAL_PATH)
     val_set.remove_subsequent_actor_utterances()
-    badapter_val = MTSIAdapterDataset(val_set, 
-                                        tokenizer,
-                                        KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,
-                                        KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+2)
+    badapter_val = BLAdapterDataset(val_set, 
+                                    KvretConfig._KVRET_MAX_BERT_TOKENS_PER_TRAIN_SENTENCE + 1,
+                                    KvretConfig._KVRET_MAX_BERT_SENTENCES_PER_TRAIN_DIALOGUE+2)
     val_generator = DataLoader(badapter_val, **params)
     print('### VALIDATION SET:')
     compute_f1(model, val_generator, device)
@@ -170,4 +140,4 @@ def test(load_checkpoint_path):
 
 
 if __name__ == '__main__':
-    test(load_checkpoint_path='dict_archive/20epochs/deep/state_dict.pt')
+    test(load_checkpoint_path='../dict_archive/baseline/state_dict.pt')

@@ -2,12 +2,12 @@ import pdb
 import random
 
 import torch
-from pytorch_transformers import BertTokenizer
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
+import spacy
 
 
-class MTSIAdapterDataset(Dataset):
+class BLAdapterDataset(Dataset):
     """
     MTSIAdapterDataset is a module implementing the adapter pattern used as intermediary between you program and the dataset when using Bert.
     It performs all the operations to adapt your dataset input to the one that Bert expects. It does the tokenization, indices transformation, padding etc.
@@ -17,7 +17,7 @@ class MTSIAdapterDataset(Dataset):
     Input:
         dataset : A class extending Dataset containing you dataset
         tokenizer : The tokenizer to use
-        max_sequence_len : Tha max length of the sequence (for padding)
+        max_sequence_len : The max length of the sequence (for padding)
 
     Output:
         tok_ids : Indices of each token detected byt the Bert tokenizer
@@ -27,11 +27,11 @@ class MTSIAdapterDataset(Dataset):
         Takes care about the feature order returned by the dataset __getitem__()
     """
 
-    def __init__(self, dataset, tokenizer, max_sequence_len, max_dialogue_len):
+    def __init__(self, dataset, max_sequence_len, max_dialogue_len):
         self._dataset = dataset
-        self._tokenizer = tokenizer
         self._max_sequence_len = max_sequence_len
         self._max_dialogue_len = max_dialogue_len
+        self._nlp = spacy.load('en_core_web_md')
 
 
     def __len__(self):
@@ -49,6 +49,52 @@ class MTSIAdapterDataset(Dataset):
         random_utterances , other_turns, _, _, _ = self._dataset.__getitem__(random_dialogue_idx)
         utterances.append(random_utterances[0])
         dialogue_turns.append(other_turns[0])
+
+
+        utts_l = []
+        utts_lengths = []
+        for utt in utterances:
+            tokens_l = []
+            doc = self._nlp(utt)
+            for token in doc:
+                if token.is_punct==False:
+                    tokens_l.append(token.vector)
+            # apply dialogue padding both to utterances and turn vector
+            curr_seq_len = len(tokens_l)
+            if curr_seq_len <= 0:
+                pdb.set_trace()
+            assert curr_seq_len > 0, '[ASSERT FAILED] -- seq len < 0' 
+            utts_lengths.append(curr_seq_len)
+
+            if curr_seq_len < self._max_sequence_len:
+                residual = self._max_sequence_len - curr_seq_len
+                tokens_l = tokens_l + [[0]*300]*residual
+            utts_l.append(tokens_l)
+        
+
+        return torch.tensor(utts_l), torch.tensor(dialogue_turns), torch.tensor(utts_lengths), intent, action, dialogue_id
+
+
+
+
+
+
+        
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         # this vector will contain list of utterances ids
         utt_ids = []
