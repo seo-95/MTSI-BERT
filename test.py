@@ -171,4 +171,4 @@ def test(load_checkpoint_path):
 
 
 if __name__ == '__main__':
-    test(load_checkpoint_path='dict_archive/no_error/no_RNN/state_dict.pt')
+    test(load_checkpoint_path='dict_archive/MINI_BATCH16/20epochs/no_RNN/state_dict.pt')
