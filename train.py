@@ -178,13 +178,14 @@ def train(load_checkpoint_path=None):
             t_intent_losses.append(loss2.item())
             t_action_losses.append(loss3.item())
 
-            if idx % _OPTIMIZER_STEP_RATE == 0 or idx == badapter_train.__len__()-1:
+            if idx != 0 and idx % _OPTIMIZER_STEP_RATE == 0 or idx == badapter_train.__len__()-1:
                 optimizer.step()
                 optimizer.zero_grad()
         
             if 'cuda' in str(device):
                 torch.cuda.empty_cache()
             
+            idx += 1
             
         #end of epoch
 
