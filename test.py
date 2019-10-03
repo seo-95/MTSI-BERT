@@ -7,7 +7,7 @@ import sys
 import numpy as np
 import torch
 from pytorch_transformers import BertTokenizer
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, recall_score, f1_score, precision_score
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -81,28 +81,32 @@ def compute_f1(model, data_generator, device):
             eod_predicted = torch.argmax(eod['prediction'], dim=-1)
             action_predicted = torch.argmax(action['prediction'], dim=-1)
             intent_predicted = torch.argmax(intent['prediction'], dim=-1)
-            
             true_eod += eod_label[0][:eod_idx+1].tolist()
             pred_eod += eod_predicted.tolist()
             true_action += local_actions.tolist()
             pred_action.append(action_predicted.item())
             true_intent += local_intents.tolist()
             pred_intent.append(intent_predicted.item())
-            """
-            if intent_predicted.item() != local_intents.tolist()[0]:
-                print('wrong intent')
-                #pdb.set_trace()
-            if action_predicted.item() != local_actions.tolist()[0]:
-                print('wrong action')
-                #pdb.set_trace()
-            """
-    
+
+    print('macro scores:')
     print('--EOD score:')
-    print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
+    #print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
+    print('precision: '+str(precision_score(true_eod, pred_eod, average='macro')))
+    print('recall: '+str(recall_score(true_eod, pred_eod, average='macro')))
+    print('f1: '+str(f1_score(true_eod, pred_eod, average='macro')))
+    
     print('--Action score:')
-    print(classification_report(true_action, pred_action, target_names=['FETCH', 'INSERT']))
+    #print(classification_report(true_action, pred_action, target_names=['FETCH', 'INSERT']))
+    print('precision: '+str(precision_score(true_action, pred_action, average='macro')))
+    print('recall: '+str(recall_score(true_action, pred_action, average='macro')))
+    print('f1: '+str(f1_score(true_action, pred_action, average='macro')))
+    
     print('--Intent score:')
-    print(classification_report(true_intent, pred_intent, target_names=['SCHEDULE', 'WEATHER', 'NAVIGATE']))
+    #print(classification_report(true_intent, pred_intent, target_names=['SCHEDULE', 'WEATHER', 'NAVIGATE']))
+    print('precision: '+str(precision_score(true_intent, pred_intent, average='micro')))
+    print('recall: '+str(recall_score(true_intent, pred_intent, average='micro')))
+    print('f1: '+str(f1_score(true_intent, pred_intent, average='micro')))
+    
 
 
 
@@ -178,5 +182,4 @@ def test(load_checkpoint_path):
 
 
 if __name__ == '__main__':
-    test(load_checkpoint_path='dict_archive/no_error/eod_no_RNN/state_dict.pt')
-    
+    test(load_checkpoint_path='dict_archive/MINI_BATCH16/100epochs/eod_no_RNN/state_dict.pt')
