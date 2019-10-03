@@ -140,4 +140,4 @@ def test(load_checkpoint_path):
 
 
 if __name__ == '__main__':
-    test(load_checkpoint_path='../dict_archive/baseline/state_dict.pt')
+    test(load_checkpoint_path='../dict_archive/MINI_BATCH16/20epochs/baseline/state_dict.pt')
