@@ -6,7 +6,7 @@ import sys
 
 import numpy as np
 import torch
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, recall_score, f1_score, precision_score
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -38,9 +38,10 @@ def compute_f1(model, data_generator, device):
     true_intent = []
     pred_intent = []
 
-
+    #model.eval()
     with torch.no_grad():
         for local_batch, local_turns, seqs_len, local_intents, local_actions, dialogue_ids in data_generator:
+            
             
             # local_batch.shape == B x D_LEN x U_LEN
             # local_intents.shape == B
@@ -57,8 +58,8 @@ def compute_f1(model, data_generator, device):
                                         device)
 
             eos_label = torch.tensor([0]*eos['logit'].shape[0]).to(device)
-            eos_label[-1] = 1                            
-
+            eos_label[-1] = 1
+            
             # take the predicted label
             eos_predicted = torch.argmax(eos['prediction'], dim=-1)
             action_predicted = torch.argmax(action['prediction'], dim=-1)
@@ -70,13 +71,26 @@ def compute_f1(model, data_generator, device):
             true_intent += local_intents.tolist()
             pred_intent.append(intent_predicted.item())
 
-    
+
+    print('macro scores:')
     print('--EOD score:')
-    print(classification_report(true_eos, pred_eos, target_names=['NON-EOD', 'EOD']))
+    #print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
+    print('precision: '+str(precision_score(true_eos, pred_eos, average='macro')))
+    print('recall: '+str(recall_score(true_eos, pred_eos, average='macro')))
+    print('f1: '+str(f1_score(true_eos, pred_eos, average='macro')))
+    
     print('--Action score:')
-    print(classification_report(true_action, pred_action, target_names=['FETCH', 'INSERT']))
+    #print(classification_report(true_action, pred_action, target_names=['FETCH', 'INSERT']))
+    print('precision: '+str(precision_score(true_action, pred_action, average='macro')))
+    print('recall: '+str(recall_score(true_action, pred_action, average='macro')))
+    print('f1: '+str(f1_score(true_action, pred_action, average='macro')))
+    
     print('--Intent score:')
-    print(classification_report(true_intent, pred_intent, target_names=['SCHEDULE', 'WEATHER', 'NAVIGATE']))
+    #print(classification_report(true_intent, pred_intent, target_names=['SCHEDULE', 'WEATHER', 'NAVIGATE']))
+    print('precision: '+str(precision_score(true_intent, pred_intent, average='micro')))
+    print('recall: '+str(recall_score(true_intent, pred_intent, average='micro')))
+    print('f1: '+str(f1_score(true_intent, pred_intent, average='micro')))
+    
 
 
 
@@ -89,6 +103,8 @@ def test(load_checkpoint_path):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
     print('active device = '+str(device))
+
+    # Dataset preparation
  
 
     # Model preparation
