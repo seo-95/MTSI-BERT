@@ -293,11 +293,11 @@ def train(load_checkpoint_path=None):
     plt.clf()
 
     # plot eod vs action vs intent
-    plt.plot(epoch_list, eod_val_global_losses, color='red', label='eod loss')
+    plt.plot(epoch_list, eod_val_global_losses, color='red', label='eos loss')
     plt.plot(epoch_list, action_val_global_losses, color='green', label='action loss')
     plt.plot(epoch_list, intent_val_global_losses, color='blue', label='intent loss')
 
-    plt.title('eod vs action vs intent')
+    plt.title('eos vs action vs intent')
     plt.xlabel('Epochs')
     plt.ylabel('Validation Loss')
     plt.legend(loc='best')
