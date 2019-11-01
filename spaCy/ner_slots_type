@@ -1,0 +1,9 @@
+ 
+##TRAIN:
+ {'distance', 'address', 'party', 'weather_attribute', 'traffic_info', 'poi', 'location', 'agenda', 'date', 'event', 'time', 'room', 'poi_type'}
+ 
+## VALIDATION:
+ {'poi_type', 'weather_attribute', 'poi', 'date', 'location', 'room', 'party', 'address', 'traffic_info', 'distance', 'agenda', 'time', 'event'}
+ 
+## TEST
+ {'traffic_info', 'poi', 'event', 'weather_attribute', 'room', 'location', 'distance', 'party', 'time', 'date', 'poi_type', 'agenda', 'address'}
