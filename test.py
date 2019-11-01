@@ -7,7 +7,9 @@ import sys
 import numpy as np
 import torch
 from pytorch_transformers import BertTokenizer
-from sklearn.metrics import f1_score
+
+from sklearn.metrics import classification_report, recall_score, f1_score, precision_score
+
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -28,6 +30,19 @@ def get_eod(turns, win_size, windows_per_dialogue):
     return res, user_count-1
 
 
+def remove_dataparallel(load_checkpoint_path):
+    # original saved file with DataParallel
+    state_dict = torch.load(load_checkpoint_path)
+    # create new OrderedDict that does not contain `module.`
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k[7:] # remove `module.`
+        new_state_dict[name] = v
+    # load params
+    return new_state_dict
+
+
 def compute_f1(model, data_generator, device):
 
     # initializes statistics
@@ -40,7 +55,6 @@ def compute_f1(model, data_generator, device):
 
     tensor_builder = TwoSepTensorBuilder()
 
-    model.eval()
     with torch.no_grad():
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in data_generator:
 
@@ -64,20 +78,36 @@ def compute_f1(model, data_generator, device):
                                         device)
             
             # take the predicted label
-            eod_predicted = torch.argmax(eod['prediction'], dim=1)
-            action_predicted = torch.argmax(action['prediction'], dim=0)
-            intent_predicted = torch.argmax(intent['prediction'], dim=0)
-            
+            eod_predicted = torch.argmax(eod['prediction'], dim=-1)
+            action_predicted = torch.argmax(action['prediction'], dim=-1)
+            intent_predicted = torch.argmax(intent['prediction'], dim=-1)
+
             true_eod += eod_label[0][:eod_idx+1].tolist()
             pred_eod += eod_predicted.tolist()
             true_action += local_actions.tolist()
             pred_action.append(action_predicted.item())
             true_intent += local_intents.tolist()
             pred_intent.append(intent_predicted.item())
-            
-    print('eod f1-score: '+ str(f1_score(true_eod, pred_eod, average='binary')))
-    print('action f1-score: '+str(f1_score(true_action, pred_action, average='binary')))
-    print('intent f1-score: '+str(f1_score(true_intent, pred_intent, average='macro')))
+
+    print('macro scores:')
+    print('--EOD score:')
+    #print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
+    print('precision: '+str(precision_score(true_eod, pred_eod, average='macro')))
+    print('recall: '+str(recall_score(true_eod, pred_eod, average='macro')))
+    print('f1: '+str(f1_score(true_eod, pred_eod, average='macro')))
+    
+    print('--Action score:')
+    #print(classification_report(true_action, pred_action, target_names=['FETCH', 'INSERT']))
+    print('precision: '+str(precision_score(true_action, pred_action, average='macro')))
+    print('recall: '+str(recall_score(true_action, pred_action, average='macro')))
+    print('f1: '+str(f1_score(true_action, pred_action, average='macro')))
+    
+    print('--Intent score:')
+    #print(classification_report(true_intent, pred_intent, target_names=['SCHEDULE', 'WEATHER', 'NAVIGATE']))
+    print('precision: '+str(precision_score(true_intent, pred_intent, average='micro')))
+    print('recall: '+str(recall_score(true_intent, pred_intent, average='micro')))
+    print('f1: '+str(f1_score(true_intent, pred_intent, average='micro')))
+    
 
 
 
@@ -110,9 +140,13 @@ def test(load_checkpoint_path):
     if torch.cuda.device_count() > 1:
         print('active devices = '+str(torch.cuda.device_count()))
         model = nn.DataParallel(model)
-    print('model loaded from: '+load_checkpoint_path) TODO
-    model.load_state_dict(torch.load(load_checkpoint_path)) TODO
+
+    print('model loaded from: '+load_checkpoint_path)
+    model.load_state_dict(torch.load(load_checkpoint_path))
+    #new_state_dict = remove_dataparallel(load_checkpoint_path)
+    #model.load_state_dict(new_state_dict)
     model.to(device)
+    model.eval()
 
 
     # Parameters
@@ -149,4 +183,4 @@ def test(load_checkpoint_path):
 
 
 if __name__ == '__main__':
-    test(load_checkpoint_path='savings/2019-08-14T09:33:09.821063/state_dict.pt')
+    test(load_checkpoint_path='dict_archive/MINI_BATCH16/100epochs/deep/state_dict.pt')
