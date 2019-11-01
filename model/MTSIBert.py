@@ -54,8 +54,8 @@ class MTSIBert(nn.Module):
                                     batch_first=True,
                                     bidirectional=True)
 
-        # EOD FFNN
-        self._eod_ffnn = nn.Sequential(nn.Linear(MTSIBert._BERT_H_DIM, MTSIBert._BERT_H_DIM),
+        # EOS FFNN
+        self._eos_ffnn = nn.Sequential(nn.Linear(MTSIBert._BERT_H_DIM, MTSIBert._BERT_H_DIM),
                                         nn.ReLU(),
                                         nn.Linear(MTSIBert._BERT_H_DIM, MTSIBert._BERT_H_DIM),
                                         nn.ReLU(),
@@ -79,7 +79,7 @@ class MTSIBert(nn.Module):
                                         nn.ReLU())
         
         # classifiers
-        self._eod_classifier = nn.Linear(in_features = MTSIBert._BERT_H_DIM,
+        self._eos_classifier = nn.Linear(in_features = MTSIBert._BERT_H_DIM,
                                         out_features = 2)
         self._intent_classifier = nn.Linear(2*MTSIBert._BERT_H_DIM, self._n_intents)
         self._action_classifier = nn.Linear(2*MTSIBert._BERT_H_DIM, 2)
@@ -138,7 +138,7 @@ class MTSIBert(nn.Module):
 
         # ENCODE the sentence
         # seq_len is a tensor containing the effective length of each sequence in encoder_input
-        encoder_input, seq_len = self.__get_user_utterance(bert_hiddens, attention_mask, device)
+        encoder_input, seq_len = self.__get_first_utterance(bert_hiddens, attention_mask, device)
         packed_encoder_input = torch.nn.utils.rnn.pack_padded_sequence(encoder_input, seq_len,
                                                                         batch_first=True, enforce_sorted=False)
 
@@ -174,12 +174,11 @@ class MTSIBert(nn.Module):
         
 
 
-    def __get_user_utterance(self, bert_hiddens, attention_mask, device):
+    def __get_first_utterance(self, bert_hiddens, attention_mask, device):
         
         res = []
         seq_len = []
 
-        #   TODO first user utterance without the [CLS] embedding ??
         # handle the first utterance of the dialogue independently
         last_token_idx = len(attention_mask[0][attention_mask[0]!=0])
         

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 """
 This module contains some example of tensor builder. A tensor builder is a class that implements 
-the abstract class 'TensorBuilder' for build the input for Bert in several different ways. 
+the abstract class 'TensorBuilder' to build the input for Bert in several different ways. 
 """
 
 class MTSITensorBuilder(ABC):
@@ -55,11 +55,10 @@ class TwoSepTensorBuilder(MTSITensorBuilder):
         When a new dialogue is detected the window is flushed and it restart with the turn counter t = 1.
 
         Input:
-            batch : the set of dialogues in the batch having shape B x D_LEN x S_LEN
-            dialogue_ids : the ids of the dialogue
+            window_list : the set of dialogues in the batch having shape B x D_LEN x S_LEN
+            device : the device where to put the tensor
         Output:
-            curr_dialog_window
-            segment : segment vector for the Bert model (sentence A and B)
+            input tensor for MTSI-BERT
 
         ------------------    
         Example with windows_size = 3:

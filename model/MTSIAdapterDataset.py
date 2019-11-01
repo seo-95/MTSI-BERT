@@ -11,17 +11,21 @@ class MTSIAdapterDataset(Dataset):
     """
     MTSIAdapterDataset is a module implementing the adapter pattern used as intermediary between you program and the dataset when using Bert.
     It performs all the operations to adapt your dataset input to the one that Bert expects. It does the tokenization, indices transformation, padding etc.
-    Another important operation is the __getitem__(idx) that returns the utterances of the dataset corresponding to that dialogye concatenated with
+    Another important operation is the __getitem__(idx) that returns the utterances of the dataset corresponding to that dialogue concatenated with
     the first utterance of another random dialogue.
 
     Input:
         dataset : A class extending Dataset containing you dataset
         tokenizer : The tokenizer to use
         max_sequence_len : Tha max length of the sequence (for padding)
+        max_dialogue_len : Tha max length of a dialogue (for padding)
 
     Output:
         tok_ids : Indices of each token detected byt the Bert tokenizer
+        dialogue_turns : User or Agent turns vector
         intent : the intent index for that utterance
+        action : Fetch or Insert
+        dialogue_id : The ID to identify that dialogue
 
     Note:
         Takes care about the feature order returned by the dataset __getitem__()

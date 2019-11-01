@@ -90,13 +90,13 @@ def train(load_checkpoint_path=None):
         print('model loaded from: '+load_checkpoint_path)
         new_state_dict = remove_dataparallel(load_checkpoint_path)
         model.load_state_dict(new_state_dict)
-    # work on multiple GPUs when availables
+    # work on multiple GPUs when available
     if torch.cuda.device_count() > 1:
         print('active devices = '+str(torch.cuda.device_count()))
         model = nn.DataParallel(model)
     model.to(device)
 
-    # this weights are needed because of unbalancing between 0 and 1 for action and eod
+    # these weights are needed because of unbalancing between 0 and 1 for action and eod
     loss_eod_weights = torch.tensor([1, 2.6525])
     loss_action_weights = torch.tensor([1, 4.8716])
     loss_eod = torch.nn.CrossEntropyLoss(weight=loss_eod_weights).to(device)
@@ -126,7 +126,7 @@ def train(load_checkpoint_path=None):
     # creates the directory for the plots figure
     os.makedirs(os.path.dirname(MTSIKvretConfig._PLOTS_SAVING_PATH), exist_ok=True)
     
-    # initializes flag and list of overall losses
+    # initializes the losses lists
     best_loss = 100
     train_global_losses = []
     val_global_losses = []
