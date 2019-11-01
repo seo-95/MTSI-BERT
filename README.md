@@ -1,2 +1,5 @@
 # MTSI-BERT
-This repository contains the code for the Multi-Turn-Single-Intent Bert model developed as my master degree project.
+
+## Architecture
+
+![](https://github.com/seo-95/MTSI-BERT/blob/master/img/BiLSTM.png)
