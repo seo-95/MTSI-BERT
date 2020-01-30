@@ -16,15 +16,15 @@
 
 ## Why?
 MTSI-BERT goal is to extract information from the session of a multi-turn dialogue. It was developed as a joint model having three main tasks:
-  - End of session detection (EOS)
-  - Action classification
-  - Intent classification
-The action is the action that the agent has to perform on a knowledge-base in order to fulfill the user goal and it can be of two types: fetch or insert.
+  - *End of session detection* (EOS)
+  - *Action classification* for the session: corresponds to insert/fetch operations on a knowledge-base to fullfill the user goal for the session
+  - *Intent classification* for the session
+
 
 <a name="sec2"/>
 
 ## Session
-A session is a contiguous ordered sequence of QA pairs in a multi-turn conversational scenario. MTSI-BERT takes as input a triplet of QAQ to understand the existing relation between the previous QA pair and the current Q of the user. In this way it is able to detect the end-of-session.
+A session is a contiguous ordered sequence of QA pairs in a multi-turn conversation. MTSI-BERT takes as input a triplet of QAQ to understand the existing relation between the previous QA pair and the current Q of the user. In this way it is able to detect the end-of-session.
 ![](img/MTSI-input.png)
 
 <a name="sec3"/>
