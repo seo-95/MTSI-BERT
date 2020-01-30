@@ -5,9 +5,9 @@
 ##### Table of Contents  
 [Why](#sec1)  
 [Session](#sec2)  
-[The Architecture](#sec3) 
-[How to use](#sec4) 
-[Hyperparamters](#sec5) 
+[The Architecture](#sec3)  
+[How to use](#sec4)  
+[Hyperparamters](#sec5)   
 [Dataset](#sec6)  
 [Results](#sec7)  
 [Dependencies](#sec8) 
