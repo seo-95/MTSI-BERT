@@ -24,7 +24,9 @@ MTSI-BERT goal is to extract information from the session of a multi-turn dialog
 <a name="sec2"/>
 
 ## Session
-A session is a contiguous ordered sequence of QA pairs in a multi-turn conversation. MTSI-BERT takes as input a triplet of QAQ to understand the existing relation between the previous QA pair and the current Q of the user. In this way it is able to detect the end-of-session.
+A session is a contiguous ordered sequence of QA pairs in a multi-turn conversation. MTSI-BERT takes as input a triplet of QAQ to understand the existing relation between the previous QA pair and the current Q of the user. In this way it is able to detect the end-of-session.<br>
+
+
 ![](img/MTSI-input.png)
 
 <a name="sec3"/>
