@@ -6,7 +6,7 @@ import sys
 
 import numpy as np
 import torch
-from pytorch_transformers import BertTokenizer
+from transformers import BertTokenizer
 from sklearn.metrics import classification_report, recall_score, f1_score, precision_score
 from torch import nn
 from torch.utils.data import DataLoader
@@ -16,7 +16,7 @@ from model import (KvretConfig, KvretDataset, MTSIAdapterDataset, MTSIBert,
 
 
 
-def get_eod(turns, win_size, windows_per_dialogue):
+def get_eos(turns, win_size, windows_per_dialogue):
     
     res = torch.zeros((len(turns), windows_per_dialogue), dtype=torch.long)
     user_count = 0
@@ -45,8 +45,8 @@ def remove_dataparallel(load_checkpoint_path):
 def compute_f1(model, data_generator, device):
 
     # initializes statistics
-    true_eod = []
-    pred_eod = []
+    true_eos = []
+    pred_eos = []
     true_action = []
     pred_action = []
     true_intent = []
@@ -58,42 +58,42 @@ def compute_f1(model, data_generator, device):
     with torch.no_grad():
         for local_batch, local_turns, local_intents, local_actions, dialogue_ids in data_generator:
             
-            # 0 = intra dialogue ; 1 = eod
-            eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
+            # 0 = intra dialogue ; 1 = eos
+            eos_label, eos_idx = get_eos(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
                                 windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
             
             # local_batch.shape == B x D_LEN x U_LEN
             # local_intents.shape == B
             # local_actions.shape == B
-            # local_eod_label.shape == B x D_PER_WIN
+            # local_s_label.shape == B x D_PER_WIN
             local_batch = local_batch.to(device)
             local_intents = local_intents.to(device)
             local_actions = local_actions.to(device)
-            eod_label = eod_label.to(device)
+            eos_label = eos_label.to(device)
 
-            eod, intent, action = model(local_batch,
+            eos, intent, action = model(local_batch,
                                         local_turns, 
                                         dialogue_ids,
                                         tensor_builder,
                                         device)
             
             # take the predicted label
-            eod_predicted = torch.argmax(eod['prediction'], dim=-1)
+            eos_predicted = torch.argmax(eos['prediction'], dim=-1)
             action_predicted = torch.argmax(action['prediction'], dim=-1)
             intent_predicted = torch.argmax(intent['prediction'], dim=-1)
-            true_eod += eod_label[0][:eod_idx+1].tolist()
-            pred_eod += eod_predicted.tolist()
+            true_eos += eos_label[0][:eos_idx+1].tolist()
+            pred_eos += eos_predicted.tolist()
             true_action += local_actions.tolist()
             pred_action.append(action_predicted.item())
             true_intent += local_intents.tolist()
             pred_intent.append(intent_predicted.item())
 
     print('macro scores:')
-    print('--EOD score:')
-    #print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
-    print('precision: '+str(precision_score(true_eod, pred_eod, average='macro')))
-    print('recall: '+str(recall_score(true_eod, pred_eod, average='macro')))
-    print('f1: '+str(f1_score(true_eod, pred_eod, average='macro')))
+    print('--EOS score:')
+    #print(classification_report(true_eos, pred_eos, target_names=['NON-EOS', 'EOS']))
+    print('precision: '+str(precision_score(true_eos, pred_eos, average='macro')))
+    print('recall: '+str(recall_score(true_eos, pred_eos, average='macro')))
+    print('f1: '+str(f1_score(true_eos, pred_eos, average='macro')))
     
     print('--Action score:')
     #print(classification_report(true_action, pred_action, target_names=['FETCH', 'INSERT']))
@@ -130,7 +130,7 @@ def test(load_checkpoint_path):
 
     # Model preparation
     model = MTSIBert(num_layers_encoder = MTSIKvretConfig._ENCODER_LAYERS_NUM,
-                    num_layers_eod = MTSIKvretConfig._EOD_LAYERS_NUM,
+                    num_layers_s = MTSIKvretConfig._EOS_LAYERS_NUM,
                     n_intents = MTSIKvretConfig._N_INTENTS,
                     batch_size = MTSIKvretConfig._BATCH_SIZE,
                     pretrained = 'bert-base-cased',
@@ -182,4 +182,4 @@ def test(load_checkpoint_path):
 
 
 if __name__ == '__main__':
-    test(load_checkpoint_path='dict_archive/MINI_BATCH16/100epochs/eod_no_RNN/state_dict.pt')
+    test(load_checkpoint_path='dict_archive/MINI_BATCH16/100epochs/eos_no_RNN/state_dict.pt')
