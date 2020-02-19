@@ -35,7 +35,7 @@ class BaselineKvretConfig:
     _N_INTENTS = 3 # number of intents
     _BATCH_SIZE = 1
     _ENCODER_LAYERS_NUM = 1
-    _EOD_LAYERS_NUM = 1
+    _EOS_LAYERS_NUM = 1
     _SEED = 26 # for reproducibility of results
     _LEARNING_RATE = 1e-3
     _WINDOW_SIZE = 3 # tipically odd number [Q(t-1), R(t-1), Q(t)]

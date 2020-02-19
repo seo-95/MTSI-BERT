@@ -46,7 +46,7 @@ def compute_f1(model, data_generator, device):
             # local_batch.shape == B x D_LEN x U_LEN
             # local_intents.shape == B
             # local_actions.shape == B
-            # local_eod_label.shape == B x D_PER_WIN
+            # local_eos_label.shape == B x D_PER_WIN
             local_batch = local_batch.to(device)
             local_intents = local_intents.to(device)
             local_actions = local_actions.to(device)
@@ -73,8 +73,8 @@ def compute_f1(model, data_generator, device):
 
 
     print('macro scores:')
-    print('--EOD score:')
-    #print(classification_report(true_eod, pred_eod, target_names=['NON-EOD', 'EOD']))
+    print('--EOS score:')
+    #print(classification_report(true_eos, pred_eos, target_names=['NON-EOS', 'EOS']))
     print('precision: '+str(precision_score(true_eos, pred_eos, average='macro')))
     print('recall: '+str(recall_score(true_eos, pred_eos, average='macro')))
     print('f1: '+str(f1_score(true_eos, pred_eos, average='macro')))
@@ -109,7 +109,7 @@ def test(load_checkpoint_path):
 
     # Model preparation
     model = BaseLine(num_layers_encoder = BaselineKvretConfig._ENCODER_LAYERS_NUM,
-                    num_layers_eod = BaselineKvretConfig._EOD_LAYERS_NUM,
+                    num_layers_eos = BaselineKvretConfig._EOS_LAYERS_NUM,
                     n_intents = BaselineKvretConfig._N_INTENTS,
                     seed = BaselineKvretConfig._SEED)
     # work on multiple GPUs when availables

@@ -9,7 +9,7 @@ from torch import nn
 class BaseLine(nn.Module):
 
 
-    def __init__(self, num_layers_encoder, num_layers_eod, n_intents, seed):
+    def __init__(self, num_layers_encoder, num_layers_eos, n_intents, seed):
 
         super(BaseLine, self).__init__()
 
