@@ -8,7 +8,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from pytorch_transformers import BertTokenizer
+from transformers import BertTokenizer
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -17,9 +17,10 @@ from model import (KvretConfig, KvretDataset, MTSIAdapterDataset, MTSIBert,
 
 _N_EPOCHS = 20
 _OPTIMIZER_STEP_RATE = 16 # how many samples has to be computed before the optimizer.step()
+_DEBUG = False
 
 
-def get_eod(turns, win_size, windows_per_dialogue):
+def get_eos(turns, win_size, windows_per_dialogue):
     
     res = torch.zeros((len(turns), windows_per_dialogue), dtype=torch.long)
     user_count = 0
@@ -49,7 +50,10 @@ def train(load_checkpoint_path=None):
 
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda:0" if use_cuda else "cpu")
+    if not _DEBUG:
+        device = torch.device("cuda:0" if use_cuda else "cpu")
+    else:
+        device = 'cpu'
     print('active device = '+str(device))
 
     # Dataset preparation
@@ -79,7 +83,7 @@ def train(load_checkpoint_path=None):
 
     # Model preparation
     model = MTSIBert(num_layers_encoder = MTSIKvretConfig._ENCODER_LAYERS_NUM,
-                    num_layers_eod = MTSIKvretConfig._EOD_LAYERS_NUM,
+                    num_layers_eos = MTSIKvretConfig._EOS_LAYERS_NUM,
                     n_intents = MTSIKvretConfig._N_INTENTS,
                     batch_size = MTSIKvretConfig._BATCH_SIZE,
                     pretrained = 'bert-base-cased',
@@ -96,10 +100,10 @@ def train(load_checkpoint_path=None):
         model = nn.DataParallel(model)
     model.to(device)
 
-    # these weights are needed because of unbalancing between 0 and 1 for action and eod
-    loss_eod_weights = torch.tensor([1, 2.6525])
+    # these weights are needed because of unbalancing between 0 and 1 for action and eos
+    loss_eos_weights = torch.tensor([1, 2.6525])
     loss_action_weights = torch.tensor([1, 4.8716])
-    loss_eod = torch.nn.CrossEntropyLoss(weight=loss_eod_weights).to(device)
+    loss_eos = torch.nn.CrossEntropyLoss(weight=loss_eos_weights).to(device)
     loss_action = torch.nn.CrossEntropyLoss(weight=loss_action_weights).to(device)
     loss_intent = torch.nn.CrossEntropyLoss().to(device)
 
@@ -107,10 +111,10 @@ def train(load_checkpoint_path=None):
             [
                 {"params": model._bert.parameters(), "lr": MTSIKvretConfig._BERT_LEARNING_RATE},
                 {"params": model._encoderbiLSTM.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
-                {"params": model._eod_ffnn.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
+                {"params": model._eos_ffnn.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
                 {"params": model._intent_ffnn.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
                 {"params": model._action_ffnn.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
-                {"params": model._eod_classifier.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
+                {"params": model._eos_classifier.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
                 {"params": model._intent_classifier.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
                 {"params": model._action_classifier.parameters(), "lr": MTSIKvretConfig._NN_LEARNING_RATE},
             ],
@@ -130,7 +134,7 @@ def train(load_checkpoint_path=None):
     best_loss = 100
     train_global_losses = []
     val_global_losses = []
-    eod_val_global_losses = []
+    eos_val_global_losses = []
     action_val_global_losses = []
     intent_val_global_losses = []
 
@@ -138,54 +142,52 @@ def train(load_checkpoint_path=None):
     # ------------- TRAINING ------------- 
 
     tensor_builder = TwoSepTensorBuilder()
-
+    
     for epoch in range(_N_EPOCHS):
         model.train()
-        t_eod_losses = []
+        t_eos_losses = []
         t_intent_losses = []
         t_action_losses = []
-        idx = 0
 
-        for local_batch, local_turns, local_intents, local_actions, dialogue_ids in training_generator:
+        for curr_step, (local_batch, local_turns, local_intents, local_actions, dialogue_ids) in enumerate(training_generator):
             
-            # 0 = intra dialogue ; 1 = eod
-            eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,
+            # 0 = intra dialogue ; 1 = eos
+            eos_label, eos_idx = get_eos(local_turns, MTSIKvretConfig._WINDOW_SIZE,
                                         windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 2)
             
             # local_batch.shape == B x D_LEN x U_LEN
             # local_intents.shape == B
             # local_actions.shape == B
-            # local_eod_label.shape == B x D_PER_WIN
+            # local_eos_label.shape == B x D_PER_WIN
             local_batch = local_batch.to(device)
             local_intents = local_intents.to(device)
             local_actions = local_actions.to(device)
-            eod_label = eod_label.to(device)
+            eos_label = eos_label.to(device)
 
-            eod, intent, action = model(local_batch,
+            eos, intent, action = model(local_batch,
                                         local_turns, dialogue_ids,
                                         tensor_builder,
                                         device)
             
             # compute loss only on real dialogue (exclude padding)
-            loss1 = loss_eod(eod['logit'][:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
+            loss1 = loss_eos(eos['logit'][:eos_idx+1], eos_label.squeeze(0)[:eos_idx+1])
             loss2 = loss_intent(intent['logit'], local_intents)
             loss3 = loss_action(action['logit'], local_actions)
             tot_loss = (loss1 + loss2 + loss3)/3
             tot_loss.backward()
 
             #save results
-            t_eod_losses.append(loss1.item())
+            t_eos_losses.append(loss1.item())
             t_intent_losses.append(loss2.item())
             t_action_losses.append(loss3.item())
 
-            if idx != 0 and idx % _OPTIMIZER_STEP_RATE == 0 or idx == badapter_train.__len__()-1:
+            if curr_step != 0 and curr_step % _OPTIMIZER_STEP_RATE == 0 or curr_step == badapter_train.__len__()-1:
                 optimizer.step()
                 optimizer.zero_grad()
 
             if 'cuda' in str(device):
                 torch.cuda.empty_cache()
-            
-            idx += 1
+
         #end of epoch
 
 
@@ -193,58 +195,57 @@ def train(load_checkpoint_path=None):
         val_losses = []
         with torch.no_grad():
             model.eval()
-            v_eod_losses = []
+            v_eos_losses = []
             v_intent_losses = []
             v_action_losses = []
             
             for local_batch, local_turns, local_intents, local_actions, dialogue_ids in validation_generator:
                 
-                # 0 = intra dialogue ; 1 = eod
-                eod_label, eod_idx = get_eod(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
+                # 0 = intra dialogue ; 1 = eos
+                eos_label, eos_idx = get_eos(local_turns, MTSIKvretConfig._WINDOW_SIZE,\
                                     windows_per_dialogue=KvretConfig._KVRET_MAX_USER_SENTENCES_PER_TRAIN_DIALOGUE + 1)
                 
                 # local_batch.shape == B x D_LEN x U_LEN
                 # local_intents.shape == B
                 # local_actions.shape == B
-                # local_eod_label.shape == B x D_PER_WIN
+                # local_eos_label.shape == B x D_PER_WIN
                 local_batch = local_batch.to(device)
                 local_intents = local_intents.to(device)
                 local_actions = local_actions.to(device)
-                eod_label = eod_label.to(device)
+                eos_label = eos_label.to(device)
                     
 
-                eod, intent, action = model(local_batch,
+                eos, intent, action = model(local_batch,
                                             local_turns, dialogue_ids,
                                             tensor_builder,
                                             device)
                 if 'cuda' in str(device):
                     torch.cuda.empty_cache()
                 
-                loss1 = loss_eod(eod['logit'][:eod_idx+1], eod_label.squeeze(0)[:eod_idx+1])
+                loss1 = loss_eos(eos['logit'][:eos_idx+1], eos_label.squeeze(0)[:eos_idx+1])
                 loss2 = loss_intent(intent['logit'], local_intents)
                 loss3 = loss_action(action['logit'], local_actions)
 
                 #save results
-                v_eod_losses.append(loss1.item())
+                v_eos_losses.append(loss1.item())
                 v_intent_losses.append(loss2.item())
                 v_action_losses.append(loss3.item())
 
-
         # compute the mean for each loss in the current epoch
-        t_eod_curr_mean = round(np.mean(t_eod_losses), 4)
+        t_eos_curr_mean = round(np.mean(t_eos_losses), 4)
         t_action_curr_mean = round(np.mean(t_action_losses), 4)
         t_intent_curr_mean = round(np.mean(t_intent_losses), 4)
 
-        v_eod_curr_mean = round(np.mean(v_eod_losses), 4)
+        v_eos_curr_mean = round(np.mean(v_eos_losses), 4)
         v_action_curr_mean = round(np.mean(v_action_losses), 4)
         v_intent_curr_mean = round(np.mean(v_intent_losses), 4)
 
-        train_mean_loss = round(np.mean([t_eod_curr_mean, t_action_curr_mean, t_intent_curr_mean]), 4)
-        val_mean_loss = round(np.mean([v_eod_curr_mean, v_action_curr_mean, v_intent_curr_mean]), 4)
+        train_mean_loss = round(np.mean([t_eos_curr_mean, t_action_curr_mean, t_intent_curr_mean]), 4)
+        val_mean_loss = round(np.mean([v_eos_curr_mean, v_action_curr_mean, v_intent_curr_mean]), 4)
 
 
         # accumulate losses for plotting
-        eod_val_global_losses.append(v_eod_curr_mean)
+        eos_val_global_losses.append(v_eos_curr_mean)
         action_val_global_losses.append(v_action_curr_mean)
         intent_val_global_losses.append(v_intent_curr_mean)
         train_global_losses.append(train_mean_loss)
@@ -263,11 +264,11 @@ def train(load_checkpoint_path=None):
         bert_curr_lr = optimizer.param_groups[0]['lr']
         nn_curr_lr = optimizer.param_groups[1]['lr']
         log_str = '### EPOCH '+str(epoch+1)+'/'+str(_N_EPOCHS)+' (bert_lr='+str(bert_curr_lr)+', nn_lr='+str(nn_curr_lr)+'):: TRAIN LOSS = '+str(train_mean_loss)+\
-                                                                '[eod = '+str(round(np.mean(t_eod_losses), 4))+'], '+\
+                                                                '[eos = '+str(round(np.mean(t_eos_losses), 4))+'], '+\
                                                                 '[action = '+str(round(np.mean(t_action_losses), 4))+'], '+\
                                                                 '[intent = '+str(round(np.mean(t_intent_losses), 4))+'], '+\
                                                                 '\n\t\t\t || VAL LOSS = '+str(val_mean_loss)+\
-                                                                '[eod = '+str(round(np.mean(v_eod_losses), 4))+'], '+\
+                                                                '[eos = '+str(round(np.mean(v_eos_losses), 4))+'], '+\
                                                                 '[action = '+str(round(np.mean(v_action_losses), 4))+'], '+\
                                                                 '[intent = '+str(round(np.mean(v_intent_losses), 4))+']'
         print(log_str)
@@ -292,8 +293,8 @@ def train(load_checkpoint_path=None):
     # clean figure
     plt.clf()
 
-    # plot eod vs action vs intent
-    plt.plot(epoch_list, eod_val_global_losses, color='red', label='eos loss')
+    # plot eos vs action vs intent
+    plt.plot(epoch_list, eos_val_global_losses, color='red', label='eos loss')
     plt.plot(epoch_list, action_val_global_losses, color='green', label='action loss')
     plt.plot(epoch_list, intent_val_global_losses, color='blue', label='intent loss')
 

@@ -4,7 +4,7 @@ from collections import deque
 
 import torch
 import torch.nn.functional as F
-from pytorch_transformers import BertModel, BertTokenizer
+from transformers import BertModel, BertTokenizer
 from torch import nn
 
 from .MTSIBertInputBuilder import MTSITensorBuilder
@@ -18,7 +18,7 @@ class MTSIBert(nn.Module):
     _BERT_MASK_IDX = 103
 
 
-    def __init__(self, num_layers_encoder, num_layers_eod,
+    def __init__(self, num_layers_encoder, num_layers_eos,
                 n_intents, batch_size, pretrained, seed, window_size):
 
         super(MTSIBert, self).__init__()
@@ -89,8 +89,8 @@ class MTSIBert(nn.Module):
     def init_hiddens(self, num_windows, device):
 
         encoder_hidden = torch.zeros(self._encoder_num_layers, num_windows, self._encoder_hidden_dim).to(device)
-        eod_hidden = torch.zeros(self._eod_num_layers, num_windows, self._eod_hidden_dim).to(device)
-        return (encoder_hidden, eod_hidden)
+        eos_hidden = torch.zeros(self._eos_num_layers, num_windows, self._eos_hidden_dim).to(device)
+        return (encoder_hidden, eos_hidden)
 
 
     def forward(self, input, turns, dialogue_ids, tensor_builder: MTSITensorBuilder,\
@@ -150,25 +150,25 @@ class MTSIBert(nn.Module):
         enc_sentence = torch.cat((last_state_forward, last_state_backward), dim=1)
         
         # FFNN
-        eod_out = self._eod_ffnn(bert_cls_out)
+        eos_out = self._eos_ffnn(bert_cls_out)
         intent_out = self._intent_ffnn(enc_sentence)
         action_out = self._action_ffnn(enc_sentence)
         
         # Residual connection
-        eod_out += bert_cls_out
+        eos_out += bert_cls_out
         intent_out += enc_sentence
         action_out += enc_sentence    
         
         ### LOGITS and predictions
-        logits_eod = self._eod_classifier(eod_out)
+        logits_eos = self._eos_classifier(eos_out)
         logits_intent = self._intent_classifier(intent_out)
         logits_action = self._action_classifier(action_out)
         
-        prediction_eod = self._softmax(logits_eod, dim=1)
+        prediction_eos = self._softmax(logits_eos, dim=1)
         prediction_intent = self._softmax(logits_intent, dim=1)
         prediction_action = self._softmax(logits_action, dim=1)
         
-        return {'logit': logits_eod, 'prediction': prediction_eod},\
+        return {'logit': logits_eos, 'prediction': prediction_eos},\
                 {'logit': logits_intent, 'prediction': prediction_intent},\
                 {'logit': logits_action, 'prediction': prediction_action}
         
