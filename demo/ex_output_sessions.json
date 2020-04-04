@@ -1,0 +1,58 @@
+{
+    "sessions":[
+        {
+            "id": "1",
+            "dialogue": [
+                {
+                    "turn": "user",
+                    "utterance": "I want to set an event for tomorrow"
+                },
+                {
+                    "turn": "agent",
+                    "utterance": "You have an all day event with your sister."   
+                },
+                {
+                    "turn": "user",
+                    "utterance": "Delete it and set an event called \"Skype call\" at 15:40"
+                },
+                {
+                    "turn": "agent",
+                    "utterance": "Ok, done"
+                },
+                {
+                    "turn": "user",
+                    "utterance": "Thank you"
+                },
+                {
+                    "turn": "agent",
+                    "utterance": "Anytime. Have a nice day!"
+                }
+            ],
+            "intent": "scheduling",
+            "action": "insert"
+        },
+        {
+            "id": "2",
+            "dialogue": [
+                {
+                    "turn": "user",
+                    "utterance": "Set direction for the nearest gas station"
+                },
+                {
+                    "turn": "agent",
+                    "utterance": "The nearest gas station is 4 km away. Direction set."
+                },
+                {
+                    "turn": "user",
+                    "utterance": "Thanks."
+                }
+            ],
+            "intent": "scheduling",
+            "action": "insert"
+        }
+    ]
+
+
+
+
+}
