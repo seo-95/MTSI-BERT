@@ -120,7 +120,21 @@ def test(load_checkpoint_path):
 - [spaCy](https://spacy.io/)
 
 
+## References
+paper: [url](http://www.lrec-conf.org/proceedings/lrec2020/pdf/2020.lrec-1.89.pdf)<br>
+If you use this work please cite
+```
+@InProceedings{senese-EtAl:2020:LREC,
+  author    = {Senese, Matteo Antonio  and  Rizzo, Giuseppe  and  Dragoni, Mauro  and  Morisio, Maurizio},
+  title     = {MTSI-BERT: A Session-aware Knowledge-based Conversational Agent},
+  booktitle      = {Proceedings of The 12th Language Resources and Evaluation Conference},
+  month          = {May},
+  year           = {2020},
+  address        = {Marseille, France},
+  publisher      = {European Language Resources Association},
+  pages     = {710--718},
+  abstract  = {In the last years, the state of the art of NLP research has made a huge step forward. Since the release of ELMo (Peters et al., 2018), a new race for the leading scoreboards of all the main linguistic tasks has begun. Several models have been published achieving promising results in all the major NLP applications, from question answering to text classification, passing through named entity recognition. These great research discoveries coincide with an increasing trend for voice-based technologies in the customer care market. One of the next biggest challenges in this scenario will be the handling of multi-turn conversations, a type of conversations that differs from single-turn by the presence of multiple related interactions. The proposed work is an attempt to exploit one of these new milestones to handle multi-turn conversations. MTSI-BERT is a BERT-based model achieving promising results in intent classification, knowledge base action prediction and end of dialogue session detection, to determine the right moment to fulfill the user request. The study about the realization of PuffBot, an intelligent chatbot to support and monitor people suffering from asthma, shows how this type of technique could be an important piece in the development of future chatbots.},
+  url       = {https://www.aclweb.org/anthology/2020.lrec-1.89}
+}
 
-
-
-Developed by **Matteo A. Senese** with :heart:
+```
