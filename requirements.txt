@@ -38,6 +38,6 @@ tokenizers==0.0.11
 torch==1.4.0
 tqdm==4.42.1
 transformers==2.4.1
-urllib3==1.25.8
+urllib3==1.26.5
 wasabi==0.6.0
 zipp==3.0.0
